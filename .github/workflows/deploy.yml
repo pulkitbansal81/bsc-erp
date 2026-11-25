@@ -20,6 +20,6 @@ jobs:
       - uses: supabase/setup-cli@v1
         with: { version: latest }
       - run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} -p "$SUPABASE_DB_PASSWORD"
-      - run: echo "Y" | supabase db push -p "$SUPABASE_DB_PASSWORD"
-      - run: supabase functions deploy api --no-verify-jwt
-      - run: supabase functions deploy import --no-verify-jwt
+      - run: echo "Y" | supabase db push --remote -p "$SUPABASE_DB_PASSWORD"
+      - run: supabase functions deploy api --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+      - run: supabase functions deploy import --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
