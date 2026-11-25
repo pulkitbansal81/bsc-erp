@@ -21,7 +21,7 @@ const ALERT_RULES: Record<string, number> = { ledger_open: 20, login_fail: 3, ho
 const ACCESSLOG_MAX = 10000;
 const TOK_IDLE_MS = 2 * 60 * 60 * 1000;
 const TOK_TOUCH_MS = 10 * 60 * 1000;
-const SERVER_BUILD = "srv sb-v1 — Supabase";
+const SERVER_BUILD = "srv sb-v1.1 — Supabase (full-read fix)";
 const DECOY_REAL_TABS: Record<string, 1> = { Users: 1, Roles: 1, Branches: 1 };
 
 function istParts(d = new Date()) {
@@ -389,14 +389,27 @@ function applyScope(data: Record<string, Values>, rids: Record<string, number[]>
 }
 
 // ---------- readAll ----------
+// PostgREST ek call mein max ~1000 rows deta hai — isliye HAMESHA page-by-page (warna bade tabs katt jaate hain)
+async function selectAllRows(realTab: string): Promise<{ rid: number; vals: unknown[] }[]> {
+  const out: { rid: number; vals: unknown[] }[] = [];
+  const CH = 1000;
+  let from = 0;
+  for (;;) {
+    const { data, error } = await SB.from("erp_rows").select("rid,vals").eq("tab", realTab).order("rid").range(from, from + CH - 1);
+    if (error) throw new Error("DB read " + realTab + ": " + error.message);
+    out.push(...(data || []) as { rid: number; vals: unknown[] }[]);
+    if (!data || data.length < CH) break;
+    from += CH;
+  }
+  return out;
+}
 async function tabReadWithRids(t: string, decoy: boolean): Promise<{ values: Values; rids: number[] }> {
   const realTab = decoy && !DECOY_REAL_TABS[t] ? "Decoy_" + t : t;
-  const { data, error } = await SB.from("erp_rows").select("rid,vals").eq("tab", realTab).order("rid");
-  if (error) throw new Error("DB read " + t + ": " + error.message);
+  const data = await selectAllRows(realTab);
   const hdr = headerOf(t);
   const values: Values = [hdr.slice()];
   const rids: number[] = [];
-  (data || []).forEach((r) => { values.push(padRow(r.vals as unknown[], hdr.length)); rids.push(Number(r.rid)); });
+  data.forEach((r) => { values.push(padRow(r.vals as unknown[], hdr.length)); rids.push(Number(r.rid)); });
   return { values, rids };
 }
 async function readAll(tabs: string[] | null, auth: Auth, loginLike: boolean, ctx: Ctx) {
@@ -431,8 +444,16 @@ async function readAll(tabs: string[] | null, auth: Auth, loginLike: boolean, ct
 
 // ---------- access log + alerts ----------
 async function accessLogRows(limit: number): Promise<unknown[][]> {
-  const { data } = await SB.from("erp_rows").select("rid,vals").eq("tab", "AccessLog").order("rid", { ascending: false }).limit(limit);
-  return (data || []).reverse().map((r) => r.vals as unknown[]);
+  const out: { rid: number; vals: unknown[] }[] = [];
+  const CH = 1000;
+  let from = 0;
+  while (out.length < limit) {
+    const { data } = await SB.from("erp_rows").select("rid,vals").eq("tab", "AccessLog").order("rid", { ascending: false }).range(from, from + Math.min(CH, limit - out.length) - 1);
+    out.push(...(data || []) as { rid: number; vals: unknown[] }[]);
+    if (!data || data.length < Math.min(CH, limit - out.length)) break;
+    from += data.length;
+  }
+  return out.reverse().map((r) => r.vals as unknown[]);
 }
 async function accessLog(user: string, name: string, role: string, action: string, detail: string, count: number, imp = "") {
   if ((await getProp("DECOY_MODE")) === "1" || isSwitchRole(role)) return;
