@@ -975,6 +975,7 @@ async function route(fn: string, args: unknown[], auth: Auth): Promise<unknown> 
       case "wsMasterSave": return await wsMasterSave(S(args?.[0]), (args?.[1] || {}) as Record<string, unknown>, ur.name);
       case "wsVoucher": { const r = await wsRpc("ws_post_voucher", { p_v: { ...(args?.[0] as Record<string, unknown>), created_by: ur.name }, p_items: args?.[1] }); return r; }
       case "wsCancel": return await wsRpc("ws_cancel_voucher", { p_vno: S(args?.[0]), p_by: ur.name });
+      case "wsEdit": return await wsRpc("ws_edit_voucher", { p_vno: S(args?.[0]), p_v: { ...(args?.[1] as Record<string, unknown>) }, p_items: args?.[2] });
       case "wsHoldConvert": return await wsRpc("ws_convert_hold", { p_hold: S(args?.[0]), p_v: { ...(args?.[1] as Record<string, unknown>), created_by: ur.name }, p_items: args?.[2] });
       case "wsPay": return await wsPaySave((args?.[0] || {}) as Record<string, unknown>, ur.name);
       case "wsPayCancel": return await wsRowCancel("ws_payments", "pno", S(args?.[0]), ur.name);

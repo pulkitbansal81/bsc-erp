@@ -4772,7 +4772,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v42 — Wholesale Accounts v1 (Supabase native)";
+window._BUILD = "BUILD v42.1 — Wholesale: Busy-style Sale voucher · no-batch fix · Edit/Others/Driver";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;

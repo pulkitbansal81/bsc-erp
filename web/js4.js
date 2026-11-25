@@ -51,7 +51,7 @@ return `<div class="toolbar" style="flex-wrap:wrap">
 ${TABS.map(x=>`<button class="btn small ${t===x[0]?'':'ghost'}" onclick="window._wsTab='${x[0]}';render()">${x[1]}</button>`).join("")}
 <button class="btn small ghost" onclick="wsReload()" title="Fresh data">🔄</button>
 </div>
-${t==="masters"?wsMasters() : t==="purchase"?wsVoucherSection("PURCHASE") : t==="sale"?wsVoucherSection("SALE") : t==="sreturn"?wsVoucherSection("SRETURN") : t==="hold"?wsHolds() : t==="stock"?wsStockView() : t==="payments"?wsPayments() : t==="expense"?wsExpense() : wsLedger()}`;
+${t==="masters"?wsMasters() : t==="purchase"?wsVoucherSection("PURCHASE") : t==="sale"?wsSalePage() : t==="sreturn"?wsVoucherSection("SRETURN") : t==="hold"?wsHolds() : t==="stock"?wsStockView() : t==="payments"?wsPayments() : t==="expense"?wsExpense() : wsLedger()}`;
 }
 
 /* ============================ MASTERS ============================ */
@@ -146,7 +146,7 @@ ${v.status==='Active'?`<button class="btn small danger" onclick="wsCancelV('${v.
 function wsOpenVoucher(T, hold){
 const isP=(T==="PURCHASE"), isS=T==="SALE"||T==="SRETURN";
 const pt=isP?"SUPPLIER":"CUSTOMER";
-window._wsRows = hold? (hold.items||[]).map(i=>({item_code:i.item_code, warehouse_code:i.warehouse_code, batch:i.batch, qty:num(i.qty), price:num(i.price)})) : [{item_code:"",warehouse_code:(wsWhs()[0]||{}).code||"",batch:"",qty:"",price:0}];
+window._wsRows = hold? (hold.items||[]).map(i=>({item_code:i.item_code, warehouse_code:i.warehouse_code, batch:i.batch===""?"__none":i.batch, qty:num(i.qty), price:num(i.price), unit:i.unit||"Box"})) : [wsBlankRow()];
 window._wsVT=T; window._wsHold=hold? hold.vno:"";
 const party=hold? hold.party_code : "";
 openModal((hold?"Hold → ":"")+(T==="PURCHASE"?"Purchase Voucher":T==="SALE"?"Sale Voucher":T==="HOLD"?"Hold Order":"Sale Return"), `
@@ -156,7 +156,7 @@ openModal((hold?"Hold → ":"")+(T==="PURCHASE"?"Purchase Voucher":T==="SALE"?"S
 </div>
 <div id="wsv-crinfo" class="muted" style="margin:.3rem 0"></div>
 <div id="wsv-rows"></div>
-<button class="btn small ghost" onclick="window._wsRows.push({item_code:'',warehouse_code:(wsWhs()[0]||{}).code||'',batch:'',qty:'',price:0});wsRenderRows()">＋ Item</button>
+<button class="btn small ghost" onclick="window._wsRows.push(wsBlankRow());wsRenderRows()">＋ Item</button>
 ${isS||T==="HOLD"? `<div class="form-grid" style="margin-top:.6rem">
 <div><label>Cartage ₹</label><input type="number" id="wsv-cart" value="${hold?num(hold.cartage):0}" oninput="wsCalc()"></div>
 <div><label>Unloading ₹</label><input type="number" id="wsv-unl" value="${hold?num(hold.unloading):0}" oninput="wsCalc()"></div>
@@ -187,18 +187,19 @@ const el=$("wsv-rows"); if(!el) return;
 el.innerHTML = window._wsRows.map((r,i)=>{
 const stock = r.item_code? wsStockOf(r.item_code, r.warehouse_code||undefined) : null;
 const bl = r.item_code? wsBatches(r.item_code, r.warehouse_code) : [];
-return `<div class="item-row" style="grid-template-columns:1fr 95px ${isP?'110px':'95px'} 70px ${isP?'':'85px 90px'} 30px;margin-top:.35rem">
+return `<div class="item-row" style="grid-template-columns:1fr 92px ${isP?'105px':'92px'} 64px 58px ${isP?'':'82px 88px'} 30px;margin-top:.35rem">
 <select onchange="window._wsRows[${i}].item_code=this.value;window._wsRows[${i}]._manual=false;wsRowPrice(${i});wsRenderRows()">
 <option value="">— item —</option>${wsItems().map(x=>`<option value="${x.code}" ${r.item_code===x.code?'selected':''}>${esc(x.name)}</option>`).join("")}</select>
 <select title="Warehouse" onchange="window._wsRows[${i}].warehouse_code=this.value;wsRenderRows()">${wsWhs().map(w=>`<option value="${w.code}" ${r.warehouse_code===w.code?'selected':''}>${esc(w.name)}</option>`).join("")}</select>
 ${isP? `<input placeholder="Batch no." value="${esc(r.batch)}" oninput="window._wsRows[${i}].batch=this.value">`
 : `<select title="Batch${stock!=null?' · total '+stock:''}" onchange="window._wsRows[${i}].batch=this.value;wsCalc()">
-<option value="">— batch —</option>${bl.map(b=>`<option value="${esc(b.batch)}" ${r.batch===b.batch?'selected':''}>${esc(b.batch||"(no batch)")} · ${num(b.qty)}</option>`).join("")}${T==="SRETURN"?`<option value="__new" ${r.batch==="__new"?'selected':''}>+ naya batch</option>`:""}</select>`}
+<option value="">— batch —</option>${bl.map(b=>{const val=b.batch===""?"__none":b.batch; return `<option value="${esc(val)}" ${r.batch===val?'selected':''}>${esc(b.batch||"(no batch)")} · ${num(b.qty)}</option>`;}).join("")}${T==="SRETURN"?`<option value="__new" ${r.batch==="__new"?'selected':''}>+ naya batch</option>`:""}</select>`}
 <input type="number" placeholder="Qty" value="${r.qty}" oninput="window._wsRows[${i}].qty=this.value;wsCalc()">
+<select title="Box / Pcs" onchange="window._wsRows[${i}].unit=this.value">${["Box","Pcs"].map(u=>`<option ${(r.unit||"Box")===u?'selected':''}>${u}</option>`).join("")}</select>
 ${isP?'':`<input type="number" placeholder="Price" value="${r.price}" oninput="window._wsRows[${i}].price=this.value;window._wsRows[${i}]._manual=true;wsCalc()">
 <div class="r" style="align-self:center;font-weight:700" id="wsv-amt${i}">${money(num(r.qty)*num(r.price))}</div>`}
 <button class="btn small ghost" onclick="window._wsRows.splice(${i},1);wsRenderRows()">✖</button>
-</div>${(!isP && r.item_code && r.batch && r.batch!=="__new")? `<div class="muted" style="font-size:.72rem;margin-left:.2rem">${esc((wsItemByCode(r.item_code)||{}).name||"")} — is batch mein ${wsStockOf(r.item_code,r.warehouse_code,r.batch)} available${T!=="SRETURN"&&num(r.qty)>wsStockOf(r.item_code,r.warehouse_code,r.batch)?' <b style="color:var(--bad)">⚠ kam hai</b>':''}</div>`:""}`;
+</div>${(!isP && r.item_code && r.batch && r.batch!=="__new")? (()=>{const rb=r.batch==="__none"?"":r.batch; const av=wsStockOf(r.item_code,r.warehouse_code,rb); return `<div class="muted" style="font-size:.72rem;margin-left:.2rem">${esc((wsItemByCode(r.item_code)||{}).name||"")} — is batch mein ${av} available${T!=="SRETURN"&&num(r.qty)>av?' <b style="color:var(--bad)">⚠ kam hai</b>':''}</div>`;})():""}`;
 }).join("");
 wsCalc();
 }
@@ -215,20 +216,22 @@ if(!saveOnce("wsv")) return;
 const T=window._wsVT;
 const party=$("wsv-party").value;
 if(T!=="OPENING" && !party){ saveDone("wsv"); return toast((T==="PURCHASE"?"Supplier":"Dealer")+" chuno."); }
-const items=window._wsRows.filter(r=>r.item_code && num(r.qty)>0).map(r=>({item_code:r.item_code, warehouse_code:r.warehouse_code, batch:r.batch==="__new"? (prompt("Naya batch number likho:")||"") : r.batch, qty:num(r.qty), price:(T==="PURCHASE"||T==="OPENING")?0:num(r.price)}));
+const items=window._wsRows.filter(r=>r.item_code && num(r.qty)>0).map(r=>({item_code:r.item_code, warehouse_code:r.warehouse_code, batch:r.batch==="__new"? (prompt("Naya batch number likho:")||"") : r.batch==="__none"? "" : r.batch, qty:num(r.qty), unit:r.unit||"Box", price:(T==="PURCHASE"||T==="OPENING")?0:num(r.price)}));
 if(!items.length){ saveDone("wsv"); return toast("Kam se kam ek item + qty bharo."); }
-if(T==="SALE"||T==="HOLD"){ const miss=items.find(x=>!x.batch); if(miss){ saveDone("wsv"); return toast("Har item ka batch chuno (stock usi se kat'ta hai)."); } }
+if(T==="SALE"||T==="HOLD"){ const miss=window._wsRows.filter(r=>r.item_code && num(r.qty)>0).find(x=>x.batch===""); if(miss){ saveDone("wsv"); return toast("Har item ka batch chuno — bina batch wale maal ke liye \"(no batch)\" option chuno."); } }
+const O=window._wsOthers||{};
 const v={vtype:T, vdate:$("wsv-date").value, party_code:party,
 cartage:num($("wsv-cart")&&$("wsv-cart").value), unloading:num($("wsv-unl")&&$("wsv-unl").value),
-delivery_address:($("wsv-addr")&&$("wsv-addr").value)||"", delivery_phone:($("wsv-dph")&&$("wsv-dph").value)||"", notes:($("wsv-notes")&&$("wsv-notes").value)||""};
+delivery_address:($("wsv-addr")&&$("wsv-addr").value)||O.addr||"", delivery_phone:($("wsv-dph")&&$("wsv-dph").value)||O.dph||"", driver:O.driver||"", notes:($("wsv-notes")&&$("wsv-notes").value)||O.notes||""};
 busy(true,"Saving voucher…");
 try{
-const res = window._wsHold? await gsRun("wsHoldConvert",[window._wsHold, v, items]) : await gsRun("wsVoucher",[v, items]);
+const res = window._wsHold? await gsRun("wsHoldConvert",[window._wsHold, v, items]) : window._wsEditVno? await gsRun("wsEdit",[window._wsEditVno, v, items]) : await gsRun("wsVoucher",[v, items]);
 busy(false); closeModal(); toast(res.vno+" saved ✓");
-window._wsHold="";
+window._wsHold=""; window._wsEditVno=""; window._wsOthers=null; if(window._wsS) window._wsS.mode="view", window._wsS.idx=0;
+if(window._wsVT==="HOLD"&&window._wsTab==="sale") window._wsTab="hold";
 try{ alog("ws_voucher", res.vno); }catch(_e){}
-wsReload();
-if(T==="SALE"||T==="SRETURN") setTimeout(()=>{ if(confirm("Print karna hai "+res.vno+"?")) wsPrintVoucherData(res.vno); }, 600);
+window.WS=null; await wsLoad(); // pehle fresh data, phir print offer (warna naya voucher print mein nahi milta)
+if(T==="SALE"||T==="SRETURN"){ if(confirm("Print karna hai "+res.vno+"?")) wsPrintVoucherData(res.vno); }
 }catch(e){ busy(false); toast(e.message); }
 saveDone("wsv");
 }
@@ -257,6 +260,96 @@ ${v.vtype==="HOLD"&&v.status==="Open"?`<button class="btn" onclick="closeModal()
 ${v.status==="Active"||v.status==="Open"?`<button class="btn danger ghost" onclick="closeModal();wsCancelV('${v.vno}')">✖ Cancel</button>`:""}</div>`);
 }
 
+
+/* ============================ SALE — BUSY-STYLE PAGE ============================ */
+function wsBlankRow(){ return {item_code:"",warehouse_code:(wsWhs()[0]||{}).code||"",batch:"",qty:"",price:0,unit:"Box"}; }
+window._wsS = window._wsS || {mode:"view", idx:0};
+function wsSaleEditStart(v, opts){ // v null = naya (ADD)
+opts=opts||{};
+window._wsS.mode="edit";
+window._wsEditVno = (v && !opts.hold)? v.vno : "";
+window._wsHold = opts.hold||"";
+window._wsVT="SALE";
+window._wsRows = v? (v.items||[]).map(i=>({item_code:i.item_code, warehouse_code:i.warehouse_code, batch:i.batch===""?"__none":i.batch, qty:num(i.qty), price:num(i.price), unit:i.unit||"Box", _manual:true})) : [wsBlankRow()];
+window._wsOthers = v? {addr:v.delivery_address||"", dph:v.delivery_phone||"", driver:v.driver||"", notes:v.notes||""} : {addr:"",dph:"",driver:"",notes:""};
+window._wsSParty = v? v.party_code : "";
+window._wsSDate = v? String(v.vdate).slice(0,10) : todayStr();
+window._wsSCart = v? num(v.cartage):0; window._wsSUnl = v? num(v.unloading):0;
+}
+function wsSaleExit(){ window._wsS.mode="view"; window._wsEditVno=""; window._wsHold=""; window._wsOthers=null; render(); }
+function wsSalePage(){
+const list=wsVouchers("SALE");
+if(window._wsS.mode==="edit") return wsSaleForm();
+if(!list.length) return `<div class="card empty">Abhi koi Sale voucher nahi.<br><br><button class="btn" onclick="wsSaleEditStart(null);render()">＋ ADD — pehla Sale Voucher</button></div>`;
+if(window._wsS.idx>=list.length) window._wsS.idx=0;
+const v=list[window._wsS.idx];
+const p=wsPartyByCode(v.party_code)||{};
+const bal=wsBal(v.party_code);
+let tq=0; (v.items||[]).forEach(i=>tq+=num(i.qty));
+return `<div class="card" style="max-width:980px">
+<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.4rem;border-bottom:2px solid var(--brand);padding-bottom:.5rem;margin-bottom:.6rem">
+<div><span class="muted">Sno.</span> <b>${list.length-window._wsS.idx}</b> / ${list.length} &nbsp; <span class="muted">V.No</span> <b style="font-size:1.2rem">${esc(v.vno)}</b> ${v.status==="Cancelled"?'<span class="pill p-bad">CANCELLED</span>':''}</div>
+<div><span class="muted">Date</span> <b>${fmtDate(v.vdate)}</b></div>
+</div>
+<div class="rowline"><span>Party (${esc(v.party_code)})</span><b>${esc(v.party_name)} · ${esc(p.phone||"")}</b></div>
+<div class="tbl-wrap"><table><tr><th>Code</th><th>Item Name</th><th>Batch</th><th>WH</th><th class="r">Qnty</th><th>Per</th><th class="r">Rate</th><th class="r">Amount</th></tr>
+${(v.items||[]).map(i=>`<tr><td>${esc(i.item_code)}</td><td><b>${esc(i.item_name)}</b></td><td>${esc(i.batch||"—")}</td><td>${esc(wsWhName(i.warehouse_code))}</td><td class="r">${i.qty}</td><td>${esc(i.unit||"Box")}</td><td class="r">${money(i.price)}</td><td class="r">${money(i.amount)}</td></tr>`).join("")}
+<tr><td colspan="4" class="r"><b>Total: ${(v.items||[]).length} items</b></td><td class="r"><b>${tq}</b></td><td></td><td class="r">Items</td><td class="r"><b>${money(v.items_total)}</b></td></tr>
+${num(v.cartage)?`<tr><td colspan="6"></td><td class="r">Cartage</td><td class="r">${money(v.cartage)}</td></tr>`:""}
+${num(v.unloading)?`<tr><td colspan="6"></td><td class="r">Unloading</td><td class="r">${money(v.unloading)}</td></tr>`:""}
+<tr><td colspan="6"></td><td class="r" style="font-size:1rem"><b>G.Total</b></td><td class="r" style="font-size:1rem;color:var(--bad)"><b>${money(v.grand_total)}</b></td></tr>
+</table></div>
+${(v.delivery_address||v.driver||v.delivery_phone)?`<div class="rowline"><span>Delivery / Others</span><b>${esc(v.delivery_address||"—")}${v.delivery_phone?" · Ph "+esc(v.delivery_phone):""}${v.driver?" · 🛺 "+esc(v.driver):""}</b></div>`:""}
+<div class="rowline"><span>Party Balance</span><b style="color:${bal>0?'var(--bad)':'var(--ok)'}">${money(Math.abs(bal))} (${bal>=0?'DR':'CR'})</b></div>
+<div class="muted" style="font-size:.75rem">By ${esc(v.created_by)} · ${esc(String(v.created_at).slice(0,16).replace("T"," "))}${v.notes?' · '+esc(v.notes):''}</div>
+<div class="toolbar" style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.6rem;flex-wrap:wrap">
+<button class="btn" onclick="wsSaleEditStart(null);render()">＋ ADD</button>
+${v.status==="Active"?`<button class="btn dark" onclick="wsSaleEditStart(wsVouchers('SALE')[window._wsS.idx]);render()">✎ EDIT</button>`:""}
+<button class="btn ghost" onclick="wsPrintVoucher('${v.vno}')">🖨 PRINT</button>
+<button class="btn ghost" ${window._wsS.idx>=list.length-1?'disabled':''} onclick="window._wsS.idx++;render()">← BACK</button>
+<button class="btn ghost" ${window._wsS.idx<=0?'disabled':''} onclick="window._wsS.idx--;render()">NEXT →</button>
+${v.status==="Active"?`<button class="btn small danger ghost" style="margin-left:auto" onclick="wsCancelV('${v.vno}')">✖ Cancel voucher</button>`:""}
+</div></div>`;
+}
+function wsSaleForm(){
+const editing=window._wsEditVno, fromHold=window._wsHold;
+setTimeout(()=>{ wsRenderRows(); wsPartyPick(); },0);
+return `<div class="card" style="max-width:980px">
+<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.4rem;border-bottom:2px solid var(--brand);padding-bottom:.5rem;margin-bottom:.6rem">
+<div><b style="font-size:1.1rem">${editing? "✎ EDIT — "+editing : fromHold? "Hold "+fromHold+" → SALE" : "＋ NEW SALE VOUCHER"}</b></div>
+<div><input type="date" id="wsv-date" value="${esc(window._wsSDate||todayStr())}" style="padding:.3rem"></div>
+</div>
+<div class="form-grid">
+<div class="full"><label>Dealer <span class="req">*</span></label><select id="wsv-party" onchange="wsPartyPick()">${'<option value="">— select —</option>'+wsParties("CUSTOMER").map(p=>`<option value="${p.code}" ${window._wsSParty===p.code?'selected':''}>${esc(p.name)} (${esc(p.code)})</option>`).join("")}</select></div>
+</div>
+<div id="wsv-crinfo" class="muted" style="margin:.3rem 0"></div>
+<div class="muted" style="font-size:.72rem;font-weight:700;margin-top:.4rem">ITEM · WAREHOUSE · BATCH · QTY · PER · RATE · AMOUNT</div>
+<div id="wsv-rows"></div>
+<button class="btn small ghost" onclick="window._wsRows.push(wsBlankRow());wsRenderRows()">＋ Item</button>
+<div class="form-grid" style="margin-top:.6rem">
+<div><label>Cartage ₹</label><input type="number" id="wsv-cart" value="${num(window._wsSCart)}" oninput="wsCalc()"></div>
+<div><label>Unloading ₹</label><input type="number" id="wsv-unl" value="${num(window._wsSUnl)}" oninput="wsCalc()"></div>
+</div>
+<div class="rowline" style="margin-top:.5rem"><span>G.TOTAL</span><b id="wsv-gt" style="font-size:1.1rem">₹0</b></div>
+<div class="toolbar" style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.6rem;flex-wrap:wrap">
+<button class="btn" onclick="wsSaveVoucher()">💾 SAVE${editing?" CHANGES":""}</button>
+${(!editing && !fromHold)?`<button class="btn ghost" onclick="window._wsVT='HOLD';wsSaveVoucher()">⏸ Save as Hold</button>`:""}
+<button class="btn dark" onclick="wsOthersModal()">OTHERS (address · phone · driver)</button>
+<button class="btn ghost" style="margin-left:auto" onclick="wsSaleExit()">✖ Cancel (bina save)</button>
+</div></div>`;
+}
+function wsOthersModal(){
+const O=window._wsOthers||(window._wsOthers={addr:"",dph:"",driver:"",notes:""});
+const p=wsPartyByCode($("wsv-party")?$("wsv-party").value:"");
+openModal("Others Details", `
+<div class="form-grid">
+<div class="full"><label>Site / Delivery address</label><input id="wso-addr" value="${esc(O.addr)}" placeholder="khaali = pickup/counter"></div>
+<div><label>Delivery phone</label><input id="wso-dph" value="${esc(O.dph||((p&&p.phone)||""))}"></div>
+<div><label>Driver / Auto</label><input id="wso-drv" value="${esc(O.driver)}" placeholder="jaise Sonu — auto wale ka naam"></div>
+<div class="full"><label>Remarks</label><input id="wso-notes" value="${esc(O.notes)}"></div>
+</div>
+<div style="margin-top:.8rem"><button class="btn" onclick="window._wsOthers={addr:$('wso-addr').value, dph:$('wso-dph').value, driver:$('wso-drv').value, notes:$('wso-notes').value};closeModal();toast('Others saved — ab voucher SAVE karo')">OK</button></div>`);
+}
 /* ============================ HOLD ============================ */
 function wsHolds(){
 const open=wsVouchers("HOLD").filter(v=>v.status==="Open");
@@ -273,7 +366,8 @@ ${byP[pn].map(v=>`<tr><td><b>${esc(v.vno)}</b></td><td>${fmtDate(v.vdate)}</td><
 }
 function wsHoldToSale(vno){
 const v=((WS&&WS.vouchers)||[]).find(x=>x.vno===vno); if(!v) return;
-wsOpenVoucher("SALE", v);
+window._wsTab="sale"; wsSaleEditStart(v, {hold:v.vno});
+render();
 }
 
 /* ============================ STOCK ============================ */
@@ -306,13 +400,13 @@ return `<div class="card click-tile" onclick="window._wsCat='${c.code}';render()
 </div>`;
 }
 function wsOpenOpening(){
-window._wsRows=[{item_code:"",warehouse_code:(wsWhs()[0]||{}).code||"",batch:"",qty:"",price:0}];
+window._wsRows=[wsBlankRow()];
 window._wsVT="OPENING"; window._wsHold="";
 openModal("Opening Stock Entry", `
 <div class="muted">Shuruaati stock — warehouse + batch + qty. Ledger/party par asar nahi, sirf stock +.</div>
 <input type="hidden" id="wsv-party" value=""><input type="hidden" id="wsv-date" value="${todayStr()}">
 <div id="wsv-rows"></div>
-<button class="btn small ghost" onclick="window._wsRows.push({item_code:'',warehouse_code:(wsWhs()[0]||{}).code||'',batch:'',qty:'',price:0});wsRenderRows()">＋ Item</button>
+<button class="btn small ghost" onclick="window._wsRows.push(wsBlankRow());wsRenderRows()">＋ Item</button>
 <div style="margin-top:.8rem"><button class="btn" onclick="wsSaveVoucher()">Save Opening</button></div>`);
 wsRenderRows();
 }
@@ -410,7 +504,7 @@ function wsPrintVoucherData(vno){
 const v=((WS&&WS.vouchers)||[]).find(x=>x.vno===vno);
 if(!v){ toast("Dobara load karke try karo."); return; }
 const title=v.vtype==="SALE"?"SALE VOUCHER":v.vtype==="SRETURN"?"SALE RETURN":v.vtype==="HOLD"?"HOLD ORDER":v.vtype;
-const itemRows=(v.items||[]).map(i=>`<tr><td>${esc(i.item_name)}<span class="muted" style="font-size:7.5px"> · ${esc(i.batch||"")}</span></td><td class="r">${i.qty}</td><td class="r">${money(i.price)}</td><td class="r">${money(i.amount)}</td></tr>`).join("");
+const itemRows=(v.items||[]).map(i=>`<tr><td>${esc(i.item_name)}<span class="muted" style="font-size:7.5px"> · ${esc(i.batch||"")}</span></td><td class="r">${i.qty} ${esc(i.unit||"Box")}</td><td class="r">${money(i.price)}</td><td class="r">${money(i.amount)}</td></tr>`).join("");
 const totals=`<tr><td colspan="3" class="r">Items total</td><td class="r">${money(v.items_total)}</td></tr>
 ${num(v.cartage)?`<tr><td colspan="3" class="r">Cartage</td><td class="r">${money(v.cartage)}</td></tr>`:""}
 ${num(v.unloading)?`<tr><td colspan="3" class="r">Unloading</td><td class="r">${money(v.unloading)}</td></tr>`:""}
@@ -421,7 +515,7 @@ const half=(label)=>`<div class="half"><div class="copy">${label}</div>
 <div style="text-align:right">Date: ${fmtDate(v.vdate)}<br>By: ${esc(v.created_by)}</div></div>
 <div><b>${esc(v.party_name)}</b> · ${esc(p.phone||"")}${v.delivery_address?`<br><b>Deliver to:</b> ${esc(v.delivery_address)}${v.delivery_phone?" · Ph: "+esc(v.delivery_phone):""}`:""}</div>
 <table><tr><th>Item</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Amount</th></tr>${itemRows}${totals}</table>
-<div class="ft">${v.vtype==="HOLD"?"<b>HOLD — maal roka gaya hai, bill nahi bana.</b><br>":""}Created: ${esc(String(v.created_at).slice(0,16).replace("T"," "))} ${v.status==="Cancelled"?"<b style='color:#C0392B'> · CANCELLED</b>":""}</div></div>`;
+<div class="ft">${v.vtype==="HOLD"?"<b>HOLD — maal roka gaya hai, bill nahi bana.</b><br>":""}${v.driver?`Driver/Auto: <span class="badge" style="display:inline-block;border:1px solid #0B1D33;padding:1px 5px;border-radius:8px;font-weight:bold">${esc(v.driver)}</span><br>`:""}Created: ${esc(String(v.created_at).slice(0,16).replace("T"," "))} ${v.status==="Cancelled"?"<b style='color:#C0392B'> · CANCELLED</b>":""}</div></div>`;
 printHTML(`<!DOCTYPE html><html><head><title>${esc(v.vno)}</title><style>
 @page{size:A5 landscape;margin:5mm}
 html,body{margin:0;padding:0} body{font-family:Arial,Helvetica,sans-serif;font-size:9px;color:#111}
