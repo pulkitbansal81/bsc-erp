@@ -72,7 +72,7 @@ window.addEventListener('error', function(ev){
 window._jsT0 = Date.now();
 (function(){
   var v = (window.ERP_CFG && window.ERP_CFG.BUILD_TAG) || "v";
-  ["js1.js","js2.js","js3.js"].forEach(function(f){
+  ["js1.js","js2.js","js3.js","js4.js"].forEach(function(f){
     var sc=document.createElement('script'); sc.async=false; sc.src=f+"?v="+v;
     sc.onerror=function(){ var el=document.getElementById('build-v'); if(el){ el.style.opacity='1'; el.style.color='#c0392b'; el.style.fontWeight='700'; el.innerHTML='⚠ Network issue — <a href="javascript:location.reload()">🔄 dobara try karo</a>'; } };
     document.body.appendChild(sc);

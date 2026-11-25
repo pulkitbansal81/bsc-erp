@@ -21,7 +21,7 @@ const ALERT_RULES: Record<string, number> = { ledger_open: 20, login_fail: 3, ho
 const ACCESSLOG_MAX = 10000;
 const TOK_IDLE_MS = 2 * 60 * 60 * 1000;
 const TOK_TOUCH_MS = 10 * 60 * 1000;
-const SERVER_BUILD = "srv sb-v1.1 — Supabase (full-read fix)";
+const SERVER_BUILD = "srv sb-v2 — Supabase (wholesale)";
 const DECOY_REAL_TABS: Record<string, 1> = { Users: 1, Roles: 1, Branches: 1 };
 
 function istParts(d = new Date()) {
@@ -700,6 +700,97 @@ async function updateSched(id: string, changes: Record<string, unknown>) {
   return await updateCellsDB("OwnerTasks", rid, changes, String(id));
 }
 
+// ---------- WHOLESALE (proper tables; Admin-only v1) ----------
+async function wsRpc(name: string, args: Record<string, unknown>) {
+  const { data, error } = await SB.rpc(name, args);
+  if (error) throw new Error(error.message.replace(/^[^:]*: /, ""));
+  return data;
+}
+async function wsSel(table: string, order = "created_at", limit = 2000): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  let from = 0;
+  while (out.length < limit) {
+    const ch = Math.min(1000, limit - out.length);
+    const { data, error } = await SB.from(table).select("*").order(order, { ascending: true }).range(from, from + ch - 1);
+    if (error) throw new Error(error.message);
+    out.push(...(data || []) as Record<string, unknown>[]);
+    if (!data || data.length < ch) break;
+    from += data.length;
+  }
+  return out;
+}
+async function wsBootstrap() {
+  const [cats, items, parties, whs, recent, stock, balances] = await Promise.all([
+    wsSel("ws_categories"), wsSel("ws_items", "code", 5000), wsSel("ws_parties", "code", 5000), wsSel("ws_warehouses"),
+    wsRpc("ws_recent", { p_vlimit: 400, p_plimit: 300 }), wsRpc("ws_stock", {}), wsRpc("ws_party_balances", {}),
+  ]);
+  const r = recent as Record<string, unknown>;
+  return { cats, items, parties, whs, vouchers: r.vouchers, payments: r.payments, expenses: r.expenses, stock, balances, srv: SERVER_BUILD };
+}
+const WS_MASTER: Record<string, { table: string; prefix: string }> = {
+  cat: { table: "ws_categories", prefix: "CAT" },
+  item: { table: "ws_items", prefix: "ITM" },
+  party: { table: "ws_parties", prefix: "PTY" },
+  wh: { table: "ws_warehouses", prefix: "WH" },
+};
+async function wsMasterSave(kind: string, obj: Record<string, unknown>, by: string) {
+  const m = WS_MASTER[kind];
+  if (!m) throw new Error("Master kind galat: " + kind);
+  const name = S(obj.name).trim();
+  if (!name) throw new Error("Naam likhna zaroori hai");
+  if (kind === "item" && !S(obj.category_code)) throw new Error("Category chunna zaroori hai");
+  if (kind === "party") {
+    if (!S(obj.phone).trim()) throw new Error("Phone zaroori hai");
+    if (S(obj.credit) === "Yes" && (!Number(obj.credit_days) || !Number(obj.credit_limit))) {
+      throw new Error("Credit Yes hai to Credit days aur Credit limit dono bharna zaroori hai");
+    }
+  }
+  const row: Record<string, unknown> = { ...obj, name };
+  delete row._new;
+  let code = S(obj.code);
+  if (!code) {
+    code = (await wsRpc("ws_next_no", { p_prefix: m.prefix })) as string;
+    row.code = code; row.created_by = by;
+    const { error } = await SB.from(m.table).insert(row);
+    if (error) throw new Error(/duplicate key.*name/i.test(error.message) ? "Is naam ka record pehle se hai" : error.message);
+  } else {
+    delete row.created_by; delete row.created_at;
+    const { error } = await SB.from(m.table).update(row).eq("code", code);
+    if (error) throw new Error(/duplicate key.*name/i.test(error.message) ? "Is naam ka record pehle se hai" : error.message);
+  }
+  return { code };
+}
+async function wsPaySave(obj: Record<string, unknown>, by: string) {
+  if (!S(obj.party_code)) throw new Error("Party chuno");
+  if (!(Number(obj.amount) > 0)) throw new Error("Amount sahi nahi");
+  const { data: pt } = await SB.from("ws_parties").select("name").eq("code", S(obj.party_code)).maybeSingle();
+  if (!pt) throw new Error("Party nahi mili");
+  const pno = (await wsRpc("ws_next_no", { p_prefix: "WP" })) as string;
+  const { error } = await SB.from("ws_payments").insert({
+    pno, pdate: S(obj.pdate) || todayIST(), party_code: S(obj.party_code), party_name: S(pt.name),
+    amount: Number(obj.amount), direction: S(obj.direction) === "OUT" ? "OUT" : "IN",
+    source: S(obj.source) || "Cash", notes: S(obj.notes), created_by: by,
+  });
+  if (error) throw new Error(error.message);
+  return { pno };
+}
+async function wsExpSave(obj: Record<string, unknown>, by: string) {
+  if (!(Number(obj.amount) > 0)) throw new Error("Amount sahi nahi");
+  if (!S(obj.category).trim()) throw new Error("Category/head likhna zaroori hai");
+  const eno = (await wsRpc("ws_next_no", { p_prefix: "WE" })) as string;
+  const { error } = await SB.from("ws_expenses").insert({
+    eno, edate: S(obj.edate) || todayIST(), amount: Number(obj.amount), category: S(obj.category).trim(),
+    detail: S(obj.detail), source: S(obj.source) || "Cash", notes: S(obj.notes), created_by: by,
+  });
+  if (error) throw new Error(error.message);
+  return { eno };
+}
+async function wsRowCancel(table: string, keyCol: string, key: string, by: string) {
+  const { error } = await SB.from(table).update({ status: "Cancelled" }).eq(keyCol, key).eq("status", "Active");
+  if (error) throw new Error(error.message);
+  return true;
+}
+
 // ---------- impersonate ----------
 async function impersonate(target: string, ctx: Ctx) {
   const t = low(target); if (!t) throw new Error("User chuno");
@@ -877,6 +968,23 @@ async function route(fn: string, args: unknown[], auth: Auth): Promise<unknown> 
     try { const ur0 = await userRec(ctx.u); await accessLog(ctx.u, ur0.name, ur0.role, "ledger_pdf", S(args?.[0]), 1, ctx.imp); } catch (_) { /* */ }
   }
   if (fn === "readSched" || fn === "appendSched" || fn === "updateSched") await requireOwner(ctx);
+  if (fn.startsWith("ws")) { // v1: Wholesale sirf Admin
+    const ur = await requireOwner(ctx);
+    switch (fn) {
+      case "wsBootstrap": return await wsBootstrap();
+      case "wsMasterSave": return await wsMasterSave(S(args?.[0]), (args?.[1] || {}) as Record<string, unknown>, ur.name);
+      case "wsVoucher": { const r = await wsRpc("ws_post_voucher", { p_v: { ...(args?.[0] as Record<string, unknown>), created_by: ur.name }, p_items: args?.[1] }); return r; }
+      case "wsCancel": return await wsRpc("ws_cancel_voucher", { p_vno: S(args?.[0]), p_by: ur.name });
+      case "wsHoldConvert": return await wsRpc("ws_convert_hold", { p_hold: S(args?.[0]), p_v: { ...(args?.[1] as Record<string, unknown>), created_by: ur.name }, p_items: args?.[2] });
+      case "wsPay": return await wsPaySave((args?.[0] || {}) as Record<string, unknown>, ur.name);
+      case "wsPayCancel": return await wsRowCancel("ws_payments", "pno", S(args?.[0]), ur.name);
+      case "wsExp": return await wsExpSave((args?.[0] || {}) as Record<string, unknown>, ur.name);
+      case "wsExpCancel": return await wsRowCancel("ws_expenses", "eno", S(args?.[0]), ur.name);
+      case "wsItemLedger": return await wsRpc("ws_item_ledger", { p_item: S(args?.[0]) });
+      case "wsPartyLedger": return await wsRpc("ws_party_ledger", { p_party: S(args?.[0]) });
+    }
+    throw new Error("Unknown WS API: " + fn);
+  }
   if (fn === "readZivaChats" || fn === "zivaSend") await requireOwner(ctx);
 
   switch (fn) {

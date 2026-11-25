@@ -2032,7 +2032,9 @@ ${String(s.SheetComments||"").trim()?`<div class="box" style="margin-top:10px"><
 </body></html>`);
 }
 function vWholesale(){
-return `<div class="grid g3">
+return `${isAdmin()? `<div class="grid g3" style="margin-bottom:.8rem">
+<div class="card click-tile" style="border:2px solid var(--brand)" onclick="ROUTE='wsacct';render()"><div class="ic">🧾</div><h3>Wholesale Accounts <span class="pill p-blue">NEW</span></h3><p class="muted">Masters · Purchase/Sale/Hold vouchers · Batchwise stock · Payments · Ledgers</p></div>
+</div>`:""}<div class="grid g3">
 <div class="card click-tile" onclick="ROUTE='marketing';render()"><div class="ic">🧳</div><h3>Marketing Visits</h3><p class="muted">Dealer visit planning, reviews, followups</p></div>
 <div class="card click-tile" onclick="ROUTE='sampling';render()"><div class="ic">🧪</div><h3>Sampling</h3><p class="muted">Sample requests — approval se dispatch tak</p></div>
 <div class="card click-tile" onclick="ROUTE='postreturn';render()"><div class="ic">↩</div><h3>Dealer Returns</h3><p class="muted">Goods returned by dealers</p></div>
@@ -4770,7 +4772,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v41 — 17 Nov (Weekly collection sheet PDF · v40 pack)";
+window._BUILD = "BUILD v42 — Wholesale Accounts v1 (Supabase native)";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;
