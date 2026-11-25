@@ -5,7 +5,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 
 const SB = createClient(
   Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  (Deno.env.get("SB_SERVICE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!,
   { auth: { persistSession: false } },
 );
 
@@ -19,10 +19,11 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   try {
     const body = await req.json();
-    const { data: kv } = await SB.from("kv").select("value").eq("key", "IMPORT_KEY").maybeSingle();
+    const { data: kv, error: kvErr } = await SB.from("kv").select("value").eq("key", "IMPORT_KEY").maybeSingle();
     const want = kv ? String(kv.value) : "";
     if (!want || String(body.key || "") !== want) {
-      return new Response(JSON.stringify({ ok: false, err: "IMPORT_KEY galat ya set nahi (kv table)" }), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
+      const why = kvErr ? "kv read FAIL: " + kvErr.message : !kv ? "kv row nahi mili" : "value mismatch";
+      return new Response(JSON.stringify({ ok: false, err: "IMPORT_KEY galat ya set nahi (kv table) — " + why }), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
     }
     const tab = String(body.tab || "");
     if (!tab) throw new Error("tab missing");

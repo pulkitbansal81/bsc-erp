@@ -11,7 +11,7 @@ import { HEADERS, TABS, CORE_TABS, DEFER_TABS } from "./headers.ts";
 
 const SB = createClient(
   Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  (Deno.env.get("SB_SERVICE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"))!,
   { auth: { persistSession: false } },
 );
 
