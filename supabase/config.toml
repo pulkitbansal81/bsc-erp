@@ -1,0 +1,6 @@
+# Supabase CLI config — project ref GitHub Action `supabase link` se aata hai
+[functions.api]
+verify_jwt = false
+
+[functions.import]
+verify_jwt = false
