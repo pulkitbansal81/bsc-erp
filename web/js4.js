@@ -370,34 +370,72 @@ window._wsTab="sale"; wsSaleEditStart(v, {hold:v.vno});
 render();
 }
 
-/* ============================ STOCK ============================ */
+/* ============================ STOCK (Busy-style: Category → Items → Item Ledger) ============================ */
+function wsOpeningOf(item){ return ((WS&&WS.stock)||[]).filter(s=>s.item_code===item).reduce((a,s)=>a+num(s.opening_qty),0); }
 function wsStockView(){
 const cat=window._wsCat||"", item=window._wsStItem||"";
-const stock=(WS&&WS.stock)||[];
-if(item){
-const it=wsItemByCode(item)||{};
-const rows=stock.filter(s=>s.item_code===item);
-return `<button class="btn small ghost" onclick="window._wsStItem='';render()">← Items</button>
-<div class="card"><div class="section-h"><h3>📦 ${esc(it.name||item)} — total <b>${wsStockOf(item)}</b></h3><div class="ln"></div>
-<button class="btn small" onclick="wsShowItemLedger('${item}')">📒 Item ledger</button></div>
-<div class="tbl-wrap"><table><tr><th>Warehouse</th><th>Batch</th><th class="r">Qty</th></tr>
-${rows.map(s=>`<tr><td>${esc(wsWhName(s.warehouse_code))}</td><td>${esc(s.batch||"(no batch)")}</td><td class="r" style="${num(s.qty)<0?'color:var(--bad);font-weight:700':''}"><b>${num(s.qty)}</b></td></tr>`).join("")||'<tr><td colspan="3" class="muted">Stock 0.</td></tr>'}
+if(item) return wsItemLedgerPage(item);
+if(cat){
+const q=(window._wsStQ||"").toLowerCase();
+const items=wsItems().filter(i=>i.category_code===cat && (!q || (i.name+" "+i.code).toLowerCase().includes(q)));
+let tO=0,tC=0;
+const rows=items.map(i=>{ const o=wsOpeningOf(i.code), c=wsStockOf(i.code); tO+=o; tC+=c;
+return `<tr class="click" onclick="window._wsStItem='${i.code}';render()"><td><b>${esc(i.name)}</b></td><td class="r">${i.sp1==null?"—":money(i.sp1)}${i.sp2!=null?' / '+money(i.sp2):''}</td><td>${esc(i.code)}</td><td class="r">${o||""}</td><td class="r" style="${c<0?'color:var(--bad)':''}"><b>${c}</b></td></tr>`; }).join("");
+return `<button class="btn small ghost" onclick="window._wsCat='';window._wsStQ='';render()">← Categories</button>
+<div class="card" style="margin-top:.5rem">
+<div class="section-h"><h3 style="color:var(--bad)">${esc(wsCatName(cat))}</h3><div class="ln"></div>
+<input id="ws-stq" placeholder="Search here…" value="${esc(window._wsStQ||'')}" oninput="window._wsStQ=this.value;window._refocusId=this.id;render()" style="max-width:240px"></div>
+<div class="tbl-wrap"><table><tr><th>Item Name</th><th class="r">Sale Rate (P1/P2)</th><th>Itemcode</th><th class="r">Opening</th><th class="r">Closing</th></tr>
+${rows||'<tr><td colspan="5" class="muted">Koi item nahi.</td></tr>'}
+<tr style="border-top:2px solid var(--brand)"><td><b>TOTAL (${items.length} items)</b></td><td></td><td></td><td class="r"><b>${tO}</b></td><td class="r"><b>${tC}</b></td></tr>
 </table></div></div>`;
 }
-if(cat){
-const items=wsItems().filter(i=>i.category_code===cat);
-return `<button class="btn small ghost" onclick="window._wsCat='';render()">← Categories</button>
-<div class="section-h"><h3>${esc(wsCatName(cat))}</h3><div class="ln"></div></div>
-<div class="tbl-wrap"><table><tr><th>Item</th><th class="r">Closing</th><th></th></tr>
-${items.map(i=>{const q=wsStockOf(i.code); return `<tr class="click" onclick="window._wsStItem='${i.code}';render()"><td><b>${esc(i.name)}</b></td><td class="r" style="${q<0?'color:var(--bad)':''}"><b>${q}</b></td><td class="muted">batch/ledger →</td></tr>`;}).join("")}
+let gO=0,gC=0;
+const catRows=wsCats().map(c=>{
+const its=wsItems().filter(i=>i.category_code===c.code);
+const o=its.reduce((a,i)=>a+wsOpeningOf(i.code),0), q=its.reduce((a,i)=>a+wsStockOf(i.code),0);
+gO+=o; gC+=q;
+return `<tr class="click" onclick="window._wsCat='${c.code}';render()"><td><b>${esc(c.name)}</b></td><td class="muted">${its.length} items</td><td class="r">${o||""}</td><td class="r"><b>${q}</b></td></tr>`;
+}).join("");
+return `<div class="card"><div class="section-h"><h3>🗃 Stock Ledger — category chuno</h3><div class="ln"></div>
+<button class="btn small ghost" onclick="wsOpenOpening()">＋ Opening stock</button></div>
+<div class="tbl-wrap"><table><tr><th>Itemlist (Category)</th><th>Desc</th><th class="r">Opening Balance</th><th class="r">Closing Balance</th></tr>
+${catRows||'<tr><td colspan="4" class="muted">Pehle Masters mein categories banao.</td></tr>'}
+<tr style="border-top:2px solid var(--brand)"><td><b>TOTAL</b></td><td></td><td class="r"><b>${gO}</b></td><td class="r"><b>${gC}</b></td></tr>
+</table></div></div>`;
+}
+function wsItemLedgerPage(code){
+const it=wsItemByCode(code)||{};
+if(window._wsLedgerFor!==code){ window._wsLedgerFor=code; window._wsLedgerRows=null;
+gsRun("wsItemLedger",[code]).then(r=>{ window._wsLedgerRows=r; render(); }).catch(e=>{ toast(e.message); window._wsLedgerRows=[]; render(); });
+}
+const rows=window._wsLedgerRows;
+const batches=((WS&&WS.stock)||[]).filter(s=>s.item_code===code && num(s.qty)!==0);
+let body;
+if(!rows) body='<div class="card empty">Ledger load ho raha hai…</div>';
+else{
+const open=rows.filter(r=>r.vtype==="OPENING").reduce((a,r)=>a+num(r.qty),0);
+const mv=rows.filter(r=>r.vtype!=="OPENING");
+let bal=open, tIn=0, tOut=0;
+const lines=mv.map(r=>{
+const inn=num(r.delta)>0? num(r.delta):0, out=num(r.delta)<0? -num(r.delta):0;
+tIn+=inn; tOut+=out; bal+=num(r.delta);
+return `<tr class="click" onclick="wsViewVoucher('${r.vno}')"><td>${fmtDate(r.vdate)}</td><td>${esc(r.vno)}</td><td>${esc(r.party_name||r.vtype)}</td><td class="muted">${esc(wsWhName(r.warehouse_code))} · ${esc(r.batch||"—")}</td><td class="r">${inn||""}</td><td class="r">${out||""}</td><td class="r">${num(r.price)?money(r.price):""}</td><td class="r"><b>${bal}</b></td></tr>`;
+}).join("");
+body=`<div class="tbl-wrap"><table><tr><th>Date</th><th>Voucher</th><th>Party Name</th><th>WH · Batch</th><th class="r">Purc Qnty</th><th class="r">Sale Qnty</th><th class="r">Rate</th><th class="r">Balance</th></tr>
+<tr style="background:var(--brand);color:#fff"><td colspan="4"><b>Opening Balance B/f</b></td><td class="r"><b>${open||""}</b></td><td></td><td></td><td class="r"><b>${open}</b></td></tr>
+${lines}
+<tr style="border-top:2px solid var(--brand)"><td colspan="4"><b>TOTAL</b></td><td class="r"><b>${tIn+open}</b></td><td class="r"><b>${tOut}</b></td><td></td><td class="r"><b>${bal}</b></td></tr>
 </table></div>`;
 }
-return `<div class="card"><div class="section-h"><h3>🗃 Stock — category chuno</h3><div class="ln"></div>
-<button class="btn small ghost" onclick="wsOpenOpening()">＋ Opening stock</button></div></div>
-<div class="grid g3">
-${wsCats().map(c=>{ const q=wsItems().filter(i=>i.category_code===c.code).reduce((a,i)=>a+wsStockOf(i.code),0);
-return `<div class="card click-tile" onclick="window._wsCat='${c.code}';render()"><div class="ic">📁</div><h3>${esc(c.name)}</h3><p class="muted">Total qty: <b>${q}</b></p></div>`; }).join("")||'<div class="card empty">Pehle Masters mein categories banao.</div>'}
-</div>`;
+return `<button class="btn small ghost" onclick="window._wsStItem='';window._wsLedgerFor='';render()">← Items</button>
+<div class="card" style="margin-top:.5rem">
+<div style="display:flex;justify-content:space-between;flex-wrap:wrap;border-bottom:2px solid var(--brand);padding-bottom:.4rem;margin-bottom:.5rem">
+<b style="color:var(--bad);font-size:1.05rem">${esc(it.name||code)}</b>
+<span class="muted">CATEGORY: <b>${esc(wsCatName(it.category_code))}</b> · ITEMCODE: <b>${esc(code)}</b> · Closing: <b>${wsStockOf(code)}</b></span>
+</div>
+${batches.length? `<div class="muted" style="font-size:.78rem;margin-bottom:.5rem"><b>Batchwise:</b> ${batches.map(b=>`${esc(wsWhName(b.warehouse_code))} · ${esc(b.batch||"(no batch)")} = <b>${num(b.qty)}</b>`).join(" &nbsp;|&nbsp; ")}</div>`:""}
+${body}</div>`;
 }
 function wsOpenOpening(){
 window._wsRows=[wsBlankRow()];
@@ -410,18 +448,6 @@ openModal("Opening Stock Entry", `
 <div style="margin-top:.8rem"><button class="btn" onclick="wsSaveVoucher()">Save Opening</button></div>`);
 wsRenderRows();
 }
-async function wsShowItemLedger(code){
-busy(true,"Ledger…");
-try{
-const rows=await gsRun("wsItemLedger",[code]); busy(false);
-const it=wsItemByCode(code)||{};
-let run=0;
-openModal("📒 "+( it.name||code), `<div class="tbl-wrap"><table><tr><th>Date</th><th>V.No</th><th>Type</th><th>Party</th><th>WH · Batch</th><th class="r">In/Out</th><th class="r">Balance</th></tr>
-${rows.map(r=>{ run+=num(r.delta); return `<tr><td>${fmtDate(r.vdate)}</td><td>${esc(r.vno)}</td><td>${esc(r.vtype)}</td><td>${esc(r.party_name)}</td><td class="muted">${esc(wsWhName(r.warehouse_code))} · ${esc(r.batch||"—")}</td><td class="r" style="color:${num(r.delta)<0?'var(--bad)':'var(--ok)'}"><b>${num(r.delta)>0?'+':''}${num(r.delta)}</b></td><td class="r"><b>${run}</b></td></tr>`;}).join("")||'<tr><td colspan="7" class="muted">Koi movement nahi.</td></tr>'}
-</table></div>`);
-}catch(e){ busy(false); toast(e.message); }
-}
-
 /* ============================ PAYMENTS / EXPENSE ============================ */
 function wsPayments(){
 const list=((WS&&WS.payments)||[]);
