@@ -231,7 +231,7 @@ window._wsHold=""; window._wsEditVno=""; window._wsOthers=null; if(window._wsS) 
 if(window._wsVT==="HOLD"&&window._wsTab==="sale") window._wsTab="hold";
 try{ alog("ws_voucher", res.vno); }catch(_e){}
 window.WS=null; await wsLoad(); // pehle fresh data, phir print offer (warna naya voucher print mein nahi milta)
-if(T==="SALE"||T==="SRETURN"){ if(confirm("Print karna hai "+res.vno+"?")) wsPrintVoucherData(res.vno); }
+if(T==="SALE"||T==="SRETURN"){ if(confirm("Print karna hai "+res.vno+"?")) wsPrintVoucher(res.vno); }
 }catch(e){ busy(false); toast(e.message); }
 saveDone("wsv");
 }
@@ -420,7 +420,7 @@ let bal=open, tIn=0, tOut=0;
 const lines=mv.map(r=>{
 const inn=num(r.delta)>0? num(r.delta):0, out=num(r.delta)<0? -num(r.delta):0;
 tIn+=inn; tOut+=out; bal+=num(r.delta);
-return `<tr class="click" onclick="wsViewVoucher('${r.vno}')"><td>${fmtDate(r.vdate)}</td><td>${esc(r.vno)}</td><td>${esc(r.party_name||r.vtype)}</td><td class="muted">${esc(wsWhName(r.warehouse_code))} · ${esc(r.batch||"—")}</td><td class="r">${inn||""}</td><td class="r">${out||""}</td><td class="r">${num(r.price)?money(r.price):""}</td><td class="r"><b>${bal}</b></td></tr>`;
+return `<tr class="click" onclick="wsViewVoucher('${r.vno}')" style="${r.vtype==='HOLD'?'background:#FFF3BF':''}"><td>${fmtDate(r.vdate)}</td><td>${esc(r.vno)}${r.vtype==='HOLD'?' <span class="pill p-warn" style="font-size:.6rem">HOLD</span>':''}</td><td>${esc(r.party_name||r.vtype)}</td><td class="muted">${esc(wsWhName(r.warehouse_code))} · ${esc(r.batch||"—")}</td><td class="r">${inn||""}</td><td class="r">${out||""}</td><td class="r">${num(r.price)?money(r.price):""}</td><td class="r"><b>${bal}</b></td></tr>`;
 }).join("");
 body=`<div class="tbl-wrap"><table><tr><th>Date</th><th>Voucher</th><th>Party Name</th><th>WH · Batch</th><th class="r">Purc Qnty</th><th class="r">Sale Qnty</th><th class="r">Rate</th><th class="r">Balance</th></tr>
 <tr style="background:var(--brand);color:#fff"><td colspan="4"><b>Opening Balance B/f</b></td><td class="r"><b>${open||""}</b></td><td></td><td></td><td class="r"><b>${open}</b></td></tr>
@@ -525,22 +525,27 @@ const el=$("wsl-out"); if(el) el.innerHTML=body; else openModal("Ledger — "+(p
 }
 
 /* ============================ PRINT (A5 landscape, Original | Duplicate) ============================ */
-function wsPrintVoucher(vno){ wsPrintVoucherData(vno); }
-function wsPrintVoucherData(vno){
+function wsPrintVoucher(vno){
+const wp=confirm("WITH PRICE print nikalna hai?\n\nOK = with price · Cancel = bina price (default)");
+wsPrintVoucherData(vno, wp);
+}
+function wsPrintVoucherData(vno, withPrice){
 const v=((WS&&WS.vouchers)||[]).find(x=>x.vno===vno);
 if(!v){ toast("Dobara load karke try karo."); return; }
 const title=v.vtype==="SALE"?"SALE VOUCHER":v.vtype==="SRETURN"?"SALE RETURN":v.vtype==="HOLD"?"HOLD ORDER":v.vtype;
-const itemRows=(v.items||[]).map(i=>`<tr><td>${esc(i.item_name)}<span class="muted" style="font-size:7.5px"> · ${esc(i.batch||"")}</span></td><td class="r">${i.qty} ${esc(i.unit||"Box")}</td><td class="r">${money(i.price)}</td><td class="r">${money(i.amount)}</td></tr>`).join("");
-const totals=`<tr><td colspan="3" class="r">Items total</td><td class="r">${money(v.items_total)}</td></tr>
+const itemRows=(v.items||[]).map(i=> withPrice
+? `<tr><td>${esc(i.item_name)}<span class="muted" style="font-size:7.5px"> · ${esc(i.batch||"")}</span></td><td class="r">${i.qty} ${esc(i.unit||"Box")}</td><td class="r">${money(i.price)}</td><td class="r">${money(i.amount)}</td></tr>`
+: `<tr><td>${esc(i.item_name)}<span class="muted" style="font-size:7.5px"> · ${esc(i.batch||"")}</span></td><td class="r">${i.qty} ${esc(i.unit||"Box")}</td></tr>`).join("");
+const totals= withPrice? `<tr><td colspan="3" class="r">Items total</td><td class="r">${money(v.items_total)}</td></tr>
 ${num(v.cartage)?`<tr><td colspan="3" class="r">Cartage</td><td class="r">${money(v.cartage)}</td></tr>`:""}
 ${num(v.unloading)?`<tr><td colspan="3" class="r">Unloading</td><td class="r">${money(v.unloading)}</td></tr>`:""}
-<tr class="tot"><td colspan="3" class="r">GRAND TOTAL</td><td class="r">${money(v.grand_total)}</td></tr>`;
+<tr class="tot"><td colspan="3" class="r">GRAND TOTAL</td><td class="r">${money(v.grand_total)}</td></tr>` : "";
 const p=wsPartyByCode(v.party_code)||{};
 const half=(label)=>`<div class="half"><div class="copy">${label}</div>
 <div class="hd"><div><h1>${title}</h1><div class="eid">${esc(v.vno)}</div></div>
 <div style="text-align:right">Date: ${fmtDate(v.vdate)}<br>By: ${esc(v.created_by)}</div></div>
 <div><b>${esc(v.party_name)}</b> · ${esc(p.phone||"")}${v.delivery_address?`<br><b>Deliver to:</b> ${esc(v.delivery_address)}${v.delivery_phone?" · Ph: "+esc(v.delivery_phone):""}`:""}</div>
-<table><tr><th>Item</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Amount</th></tr>${itemRows}${totals}</table>
+<table><tr><th>Item</th><th class="r">Qty</th>${withPrice?'<th class="r">Price</th><th class="r">Amount</th>':''}</tr>${itemRows}${totals}</table>
 <div class="ft">${v.vtype==="HOLD"?"<b>HOLD — maal roka gaya hai, bill nahi bana.</b><br>":""}${v.driver?`Driver/Auto: <span class="badge" style="display:inline-block;border:1px solid #0B1D33;padding:1px 5px;border-radius:8px;font-weight:bold">${esc(v.driver)}</span><br>`:""}Created: ${esc(String(v.created_at).slice(0,16).replace("T"," "))} ${v.status==="Cancelled"?"<b style='color:#C0392B'> · CANCELLED</b>":""}</div></div>`;
 printHTML(`<!DOCTYPE html><html><head><title>${esc(v.vno)}</title><style>
 @page{size:A5 landscape;margin:5mm}

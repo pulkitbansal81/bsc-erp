@@ -4772,7 +4772,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v42.2 — Wholesale: Busy-style Stock Ledger (Category → Items → Item ledger)";
+window._BUILD = "BUILD v42.3 — WS: hold yellow in ledger · print default without price";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;
