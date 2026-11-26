@@ -4772,7 +4772,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v42.3 — WS: hold yellow in ledger · print default without price";
+window._BUILD = "BUILD v43 — WS: sidebar dashboard, Pending Dispatches card, date-range bill list (Sale/Return), searchable dealer+item, bigger fields";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;
