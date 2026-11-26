@@ -216,6 +216,11 @@ async function requireSwitch(ctx: Ctx) {
   if (!isSwitchRole(ur.role)) throw new Error("Not allowed");
   return ur;
 }
+async function requireWholesale(ctx: Ctx) {
+  const ur = await userRec(ctx.u);
+  if (isAdminRole(ur.role) || /(^|[,\s])EA([,\s]|$)/i.test(S(ur.role))) return ur;
+  throw new Error("Wholesale module sirf Admin / EA ke liye hai");
+}
 async function requireAdminOrPM(ctx: Ctx): Promise<string> {
   const rows = await usersRows();
   for (let i = 1; i < rows.length; i++) {
@@ -968,8 +973,8 @@ async function route(fn: string, args: unknown[], auth: Auth): Promise<unknown> 
     try { const ur0 = await userRec(ctx.u); await accessLog(ctx.u, ur0.name, ur0.role, "ledger_pdf", S(args?.[0]), 1, ctx.imp); } catch (_) { /* */ }
   }
   if (fn === "readSched" || fn === "appendSched" || fn === "updateSched") await requireOwner(ctx);
-  if (fn.startsWith("ws")) { // v1: Wholesale sirf Admin
-    const ur = await requireOwner(ctx);
+  if (fn.startsWith("ws")) { // Wholesale: Admin + EA
+    const ur = await requireWholesale(ctx);
     switch (fn) {
       case "wsBootstrap": return await wsBootstrap();
       case "wsMasterSave": return await wsMasterSave(S(args?.[0]), (args?.[1] || {}) as Record<string, unknown>, ur.name);

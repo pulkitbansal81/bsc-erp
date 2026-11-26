@@ -34,6 +34,7 @@ Substitutes:["SubID","AbsentUser","AbsentName","SubstituteUser","SubstituteName"
 Quotations:["QuotID","Date","ValidTill","CustomerName","Phone","Address","Salesman","Branch","ItemsJSON","SubTotal","Freight","Unloading","GrandTotal","Terms","Notes","Status","CreatedBy","CreatedAt","LastEditedBy","LastEditedAt"]
 };
 const MODULES = {
+wsacct:["Wholesale Accounts","🧾"],
 dashboard:["Dashboard","▦"], newlead:["Add New Lead","＋"], leads:["Leads & Followups","☎"],
 estimates:["Estimates","🧾"], returns:["Return Goods","↩"], customers:["Customers & Ledgers","👥"],
 payfollow:["Payment Followups","💰"], outstanding:["Outstanding","₹"], checkdisp:["Check Dispatch Status","🚚"],
@@ -353,6 +354,7 @@ const keys=rd? String(rd.Modules||"").split(",").map(s=>s.trim()).filter(k=>MODU
 keys.forEach(k=>M.push([k, MODULES[k][0], MODULES[k][1]]));
 // v19: EA role ko IMS upload apne aap milta hai — Roles tab mein "fillims" add karne ki zaroorat nahi
 if(String(role).trim().toUpperCase()==="EA" && !M.some(x=>x[0]==="fillims")) M.push(["fillims", MODULES.fillims[0], MODULES.fillims[1]]);
+if(String(role).trim().toUpperCase()==="EA" && !M.some(x=>x[0]==="wsacct")) M.push(["wsacct","Wholesale Accounts","🧾"]); // EA ko wholesale
 // v21.1: "Purchase Manager" role (naam mein "purchase") ko IMS / Purchase auto milta hai — EA ko nahi
 if(String(role).toLowerCase().indexOf("purchase")>-1 && !M.some(x=>x[0]==="imsdash")) M.push(["imsdash", MODULES.imsdash[0], MODULES.imsdash[1]]);
 // v21.6: "Dispatch Manager" role ko dispatch status update ka right auto milta hai — same jaisa CRM ke paas hai
