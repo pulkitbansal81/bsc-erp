@@ -4772,7 +4772,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v44 — WS: Sales Orders + Pending Dispatch flow, auto-person dispatch, typeahead (no full list), SRETURN minus, stock search, refresh fix";
+window._BUILD = "BUILD v45 — WS: Dispatch Status filters, Ledger search+filter, multi-entry Payments (Receipt/Payment/Rebate, cheque/gpay/cash rules), Others OK fix";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;

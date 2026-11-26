@@ -47,7 +47,7 @@ return v==null? (pl==="P2"? (it.sp1!=null?num(it.sp1):0) : 0) : num(v);
 function vWSAcct(){
 if(!WS){ wsLoad(); return `<div class="card empty">Wholesale data load ho raha hai…</div>`; }
 const t=window._wsTab;
-const MENU=[["dash","▦ Dashboard"],["masters","⚙️ Masters"],["sale","🧾 Sale"],["purchase","📥 Purchase"],["sreturn","↩ Sale Return"],["sorder","📝 Sales Orders ("+wsVouchers("HOLD").filter(v=>v.status==="Open").length+")"],["pending","🚚 Pending Dispatch ("+wsVouchers("SALE").filter(v=>v.status==="Active"&&v.dispatch_status!=="Dispatched").length+")"],["payments","💰 Payments"],["stock","🗃 Stock"],["expense","💸 Expense"],["ledger","📒 Ledgers"]];
+const MENU=[["dash","▦ Dashboard"],["masters","⚙️ Masters"],["sale","🧾 Sale"],["purchase","📥 Purchase"],["sreturn","↩ Sale Return"],["sorder","📝 Sales Orders ("+wsVouchers("HOLD").filter(v=>v.status==="Open").length+")"],["pending","🚚 Dispatch Status ("+wsVouchers("SALE").filter(v=>v.status==="Active"&&v.dispatch_status!=="Dispatched").length+")"],["payments","💰 Payments"],["stock","🗃 Stock"],["expense","💸 Expense"],["ledger","📒 Ledgers"]];
 const body = t==="dash"?wsDash() : t==="masters"?wsMasters() : t==="purchase"?wsVoucherSection("PURCHASE") : t==="sale"?wsSalePage() : t==="sreturn"?wsVoucherSection("SRETURN") : (t==="hold"||t==="sorder")?wsHolds() : t==="pending"?wsPending() : t==="stock"?wsStockView() : t==="payments"?wsPayments() : t==="expense"?wsExpense() : wsLedger();
 return `<style>
 .ws-sug{position:absolute;z-index:60;left:0;right:0;top:100%;background:#fff;border:1px solid #cdd;border-radius:8px;max-height:260px;overflow:auto;box-shadow:0 6px 18px #0003;display:none}
@@ -448,7 +448,11 @@ openModal("Others Details", `
 <div><label>Delivery phone</label><input id="wso-dph" value="${esc(O.dph||((p&&p.phone)||""))}"></div>
 <div class="full"><label>Remarks <span class="muted" style="text-transform:none">(slip par print hoga)</span></label><input id="wso-notes" value="${esc(O.notes)}"></div>
 </div>
-<div style="margin-top:.8rem"><button class="btn" onclick="window._wsOthers={addr:$('wso-addr').value, dph:$('wso-dph').value, driver:(window._wsOthers&&window._wsOthers.driver)||"", notes:$('wso-notes').value};closeModal();toast('Others saved — ab voucher SAVE karo')">OK</button></div>`);
+<div style="margin-top:.8rem"><button class="btn" onclick="wsOthersSave()">OK</button></div>`);
+}
+function wsOthersSave(){
+window._wsOthers={addr:($('wso-addr')||{}).value||"", dph:($('wso-dph')||{}).value||"", driver:(window._wsOthers&&window._wsOthers.driver)||"", notes:($('wso-notes')||{}).value||""};
+closeModal(); toast('Others saved — ab voucher SAVE karo');
 }
 /* ============================ HOLD ============================ */
 function wsHolds(){
@@ -502,16 +506,23 @@ saveDone("wsd");
 }
 function wsPending(){
 const F=window._wsPendF=window._wsPendF||{from:"2000-01-01",to:"2099-12-31"};
-const list=wsVouchers("SALE").filter(v=>v.status==="Active" && v.dispatch_status!=="Dispatched" && wsInRange(v,"_wsPendF"))
-  .sort((a,b)=>a.vdate<b.vdate?-1:1);
-return `<div class="card"><div class="section-h"><h3>🚚 Pending Dispatch (${list.length})</h3><div class="ln"></div></div>
-<div class="muted">Sale challan ban gaya, maal abhi gaya nahi. Maal jaate waqt "Update" se Partially / Fully + auto person set karo.</div>
+const fs=window._wsDispF||"pending"; // pending | partial | full | all
+let list=wsVouchers("SALE").filter(v=>v.status==="Active" && wsInRange(v,"_wsPendF"));
+if(fs==="pending") list=list.filter(v=>!v.dispatch_status || v.dispatch_status==="");
+else if(fs==="partial") list=list.filter(v=>v.dispatch_status==="Partially Dispatched");
+else if(fs==="full") list=list.filter(v=>v.dispatch_status==="Dispatched");
+list=list.sort((a,b)=>a.vdate<b.vdate?-1:1);
+const cnt=st=>wsVouchers("SALE").filter(v=>v.status==="Active" && wsInRange(v,"_wsPendF") && (st==="pending"?(!v.dispatch_status):st==="partial"?v.dispatch_status==="Partially Dispatched":st==="full"?v.dispatch_status==="Dispatched":true)).length;
+const TABS=[["pending","⏳ Pending ("+cnt("pending")+")"],["partial","◑ Partially ("+cnt("partial")+")"],["full","✓ Fully ("+cnt("full")+")"],["all","All ("+cnt("all")+")"]];
+return `<div class="card"><div class="section-h"><h3>🚚 Dispatch Status (${list.length})</h3><div class="ln"></div></div>
+<div class="muted">Maal jaate waqt "Update" se Partially / Fully + auto person set karo.</div>
 ${wsDateFilterBar("_wsPendF")}
+<div class="toolbar" style="flex-wrap:wrap">${TABS.map(x=>`<button class="btn small ${fs===x[0]?'':'ghost'}" onclick="window._wsDispF='${x[0]}';render()">${x[1]}</button>`).join("")}</div>
 <div class="tbl-wrap"><table><tr><th>V.No</th><th>Date</th><th>Dealer</th><th class="r">Qty</th><th class="r">G.Total</th><th>Status</th><th>Auto</th><th></th></tr>
 ${list.map(v=>{let tq=0;(v.items||[]).forEach(i=>tq+=num(i.qty)); return `<tr><td><b>${esc(v.vno)}</b></td><td>${fmtDate(v.vdate)}</td><td>${esc(v.party_name)}</td><td class="r">${tq}</td><td class="r"><b>${money(v.grand_total)}</b></td>
-<td>${v.dispatch_status==="Partially Dispatched"?'<span class="pill p-warn">◑ Partial</span>':'<span class="pill p-bad">⏳ Pending</span>'}</td><td>${esc(v.auto_person||"—")}</td>
+<td>${v.dispatch_status==="Dispatched"?'<span class="pill p-ok">✓ Fully</span>':v.dispatch_status==="Partially Dispatched"?'<span class="pill p-warn">◑ Partial</span>':'<span class="pill p-bad">⏳ Pending</span>'}</td><td>${esc(v.auto_person||"—")}</td>
 <td style="white-space:nowrap"><button class="btn small" style="background:var(--ok)" onclick="wsDispatchModal('${v.vno}')">🚚 Update</button>
-<button class="btn small ghost" onclick="window._wsTab='sale';window._wsS={mode:'sheet',idx:wsVouchers('SALE').findIndex(x=>x.vno==='${v.vno}')};render()">View</button></td></tr>`;}).join("")||'<tr><td colspan="8" class="muted">Sab dispatch ho gaya. 🎉</td></tr>'}
+<button class="btn small ghost" onclick="window._wsTab='sale';window._wsS={mode:'sheet',idx:wsVouchers('SALE').findIndex(x=>x.vno==='${v.vno}')};render()">View</button></td></tr>`;}).join("")||'<tr><td colspan="8" class="muted">Is filter mein koi nahi.</td></tr>'}
 </table></div></div>`;
 }
 /* ============================ STOCK (Busy-style: Category → Items → Item Ledger) ============================ */
@@ -604,31 +615,106 @@ openModal("Opening Stock Entry", `
 wsRenderRows();
 }
 /* ============================ PAYMENTS / EXPENSE ============================ */
+function wsGpayHeads(){ try{ return (DB.GpayHeads||[]).filter(h=>h&&h.Name).map(h=>h.Name); }catch(e){ return []; } }
+window._wsPayStage = window._wsPayStage || [];
+function wsPayDateBounds(){ // cash: aaj/kal only
+const src=($("wsp-src")||{}).value||"";
+const dEl=$("wsp-date"); if(!dEl) return;
+if(src==="Cash"){ const y=new Date(Date.now()-86400000); const pad=n=>String(n).padStart(2,"0"); const ys=y.getFullYear()+"-"+pad(y.getMonth()+1)+"-"+pad(y.getDate()); dEl.min=ys; dEl.max=todayStr(); if(dEl.value<ys||dEl.value>todayStr()) dEl.value=todayStr(); }
+else{ dEl.removeAttribute("min"); dEl.removeAttribute("max"); }
+}
+function wsPaySrcFields(){
+const dir=($("wsp-dir")||{}).value||"IN";
+const src=($("wsp-src")||{}).value||"Cash";
+const box=$("wsp-extra"); if(!box) return;
+wsPayDateBounds();
+if(dir==="REBATE"){ box.innerHTML=`<div class="full"><label>Rebate reason <span class="req">*</span></label><input id="wsp-notes" placeholder="kis karan rebate — slip/ledger mein dikhega"></div>`; return; }
+let h="";
+if(src==="Cheque") h=`<div><label>Cheque no. <span class="req">*</span></label><input id="wsp-chqno"></div>
+<div><label>Cheque date <span class="req">*</span></label><input type="date" id="wsp-chqdt" value="${todayStr()}"></div>`;
+else if(src==="GPay Others"){ const heads=wsGpayHeads(); h=`<div><label>GPay head <span class="req">*</span></label><select id="wsp-ghead">${'<option value="">— select —</option>'+heads.map(n=>`<option>${esc(n)}</option>`).join("")}</select>${heads.length?'':'<div class="muted" style="color:var(--bad)">GPay heads khaali — Retail mein add karo</div>'}</div>`; }
+h+=`<div class="full"><label>Notes</label><input id="wsp-notes"></div>`;
+box.innerHTML=h;
+}
 function wsPayments(){
+setTimeout(()=>{ wsPaySrcFields(); },0);
+const stage=window._wsPayStage;
 const list=((WS&&WS.payments)||[]);
 return `<div class="card"><div class="section-h"><h3>＋ Payment Entry</h3><div class="ln"></div></div>
+<div class="muted">Ek-ek karke dealer add karo (salesman 5 dealer se laya to 5 add karo), phir neeche "Submit all".</div>
 <div class="form-grid">
-<div><label>Party <span class="req">*</span></label><select id="wsp-party">${'<option value="">— select —</option>'+wsParties().map(p=>`<option value="${p.code}">${esc(p.name)} (${esc(p.ptype.slice(0,4))})</option>`).join("")}</select></div>
-<div><label>Direction</label><select id="wsp-dir"><option value="IN">IN — party se aaya (receipt)</option><option value="OUT">OUT — party ko diya</option></select></div>
+<div class="full"><label>Party <span class="req">*</span></label>
+<div class="ws-ta"><input id="wsp-party-in" autocomplete="off" placeholder="Party type karo…" oninput="wsPayPartySuggest(this)" onblur="setTimeout(()=>wsSugHide('wsp-party-sug'),200)" style="width:100%;box-sizing:border-box;padding:.5rem"><div class="ws-sug" id="wsp-party-sug"></div></div>
+<input type="hidden" id="wsp-party"><div id="wsp-pbal" class="muted" style="font-size:.78rem"></div></div>
+<div><label>Direction</label><select id="wsp-dir" onchange="wsPaySrcFields()">
+<option value="IN">Receipt — payment aaya</option>
+<option value="OUT">Payment — payment gaya</option>
+<option value="REBATE">Rebate — dealer ko diya (adjust)</option></select></div>
 <div><label>Amount ₹ <span class="req">*</span></label><input type="number" id="wsp-amt"></div>
+<div><label>Source</label><select id="wsp-src" onchange="wsPaySrcFields()"><option>Cash</option><option>NEFT BSC</option><option>Cheque</option><option>GPay Others</option><option>Card Swipe</option></select></div>
 <div><label>Date</label><input type="date" id="wsp-date" value="${todayStr()}"></div>
-<div><label>Source</label><select id="wsp-src"><option>Cash</option><option>NEFT BSC</option><option>GPay</option><option>Cheque</option><option>Card Swipe</option></select></div>
-<div><label>Notes</label><input id="wsp-notes"></div>
+<div id="wsp-extra" class="full" style="display:contents"></div>
 </div>
-<div style="margin-top:.8rem"><button class="btn" onclick="wsSavePay()">Save Payment</button></div></div>
+<div style="margin-top:.7rem"><button class="btn dark" onclick="wsPayAdd()">➕ Add to list</button></div>
+${stage.length?`<div class="section-h"><h3>Is baar ki list (${stage.length})</h3><div class="ln"></div></div>
+<div class="tbl-wrap"><table><tr><th>Party</th><th>Dir</th><th class="r">Amount</th><th>Source</th><th>Notes</th><th></th></tr>
+${stage.map((e,i)=>`<tr><td>${esc(e.party_name)}</td><td>${e.direction==="IN"?"Receipt":e.direction==="OUT"?"Payment":"Rebate"}</td><td class="r"><b>${money(e.amount)}</b></td><td>${esc(e.source)}${e.source_detail?" · "+esc(e.source_detail):""}</td><td class="muted">${esc(e.notes||"")}</td><td><button class="btn small danger ghost" onclick="window._wsPayStage.splice(${i},1);render()">✖</button></td></tr>`).join("")}
+<tr style="border-top:2px solid var(--brand)"><td colspan="2"><b>TOTAL</b></td><td class="r"><b>${money(stage.reduce((a,e)=>a+num(e.amount),0))}</b></td><td colspan="3"></td></tr>
+</table></div>
+<div style="margin-top:.6rem"><button class="btn" onclick="wsPaySubmit()">✅ Submit all (${stage.length})</button>
+<button class="btn ghost" onclick="window._wsPayStage=[];render()">Clear</button></div>`:""}
+</div>
 <div class="section-h"><h3>Recent (${list.length})</h3><div class="ln"></div></div>
-${list.length? `<div class="tbl-wrap"><table><tr><th>No</th><th>Date</th><th>Party</th><th class="r">Amount</th><th>Dir</th><th>Source</th><th></th></tr>
-${list.slice(0,60).map(p=>`<tr class="${p.status==='Cancelled'?'muted':''}"><td>${esc(p.pno)}</td><td>${fmtDate(p.pdate)}</td><td>${esc(p.party_name)}</td><td class="r"><b>${money(p.amount)}</b></td><td>${p.direction==="IN"?'<span class="pill p-ok">IN</span>':'<span class="pill p-bad">OUT</span>'}</td><td>${esc(p.source)}</td>
+${list.length? `<div class="tbl-wrap"><table><tr><th>No</th><th>Date</th><th>Party</th><th class="r">Amount</th><th>Dir</th><th>Source</th><th>Notes</th><th></th></tr>
+${list.slice(0,60).map(p=>`<tr class="${p.status==='Cancelled'?'muted':''}"><td>${esc(p.pno)}</td><td>${fmtDate(p.pdate)}</td><td>${esc(p.party_name)}</td><td class="r"><b>${money(p.amount)}</b></td><td>${p.direction==="IN"?'<span class="pill p-ok">Receipt</span>':p.direction==="REBATE"?'<span class="pill p-warn">Rebate</span>':'<span class="pill p-bad">Payment</span>'}</td><td>${esc(p.source)}${p.source_detail?"<div class='muted' style='font-size:.72rem'>"+esc(p.source_detail)+"</div>":""}</td><td class="muted">${esc(p.notes||"")}</td>
 <td>${p.status==='Active'?`<button class="btn small danger ghost" onclick="wsCancelPay('${p.pno}')">✖</button>`:'Cancelled'}</td></tr>`).join("")}</table></div>`:`<div class="card empty">Koi payment nahi.</div>`}`;
 }
-async function wsSavePay(){
-if(!saveOnce("wsp")) return;
-busy(true,"Saving…");
-try{ const r=await gsRun("wsPay",[{party_code:$("wsp-party").value, direction:$("wsp-dir").value, amount:num($("wsp-amt").value), pdate:$("wsp-date").value, source:$("wsp-src").value, notes:$("wsp-notes").value}]); busy(false); toast(r.pno+" ✓"); wsReload(); }
-catch(e){ busy(false); toast(e.message); }
-saveDone("wsp");
+function wsPayPartySuggest(el){
+const q=String(el.value||"").trim().toLowerCase();
+const box=$("wsp-party-sug"); if(!box) return;
+if(q.length<1){ box.style.display="none"; $("wsp-party").value=""; $("wsp-pbal").innerHTML=""; return; }
+const hits=wsParties().filter(pp=>pp.name.toLowerCase().includes(q)||pp.code.toLowerCase().includes(q)).slice(0,14);
+box.innerHTML=hits.map(pp=>`<div class="ws-sug-item" onmousedown="wsPayPartyChoose('${pp.code}')"><b>${esc(pp.name)}</b> <span class="muted">${esc(pp.code)} · ${esc(pp.ptype)}</span></div>`).join("")||'<div class="ws-sug-item muted">koi match nahi</div>';
+box.style.display="block";
+const exact=wsParties().find(pp=>pp.name.toLowerCase()===q);
+$("wsp-party").value=exact?exact.code:""; if(exact) wsPayShowBal(exact.code);
 }
-async function wsCancelPay(pno){ if(!confirm(pno+" cancel?")) return; busy(true,"…"); try{ await gsRun("wsPayCancel",[pno]); busy(false); wsReload(); }catch(e){ busy(false); toast(e.message); } }
+function wsPayPartyChoose(code){
+const pp=wsPartyByCode(code); if(!pp) return;
+$("wsp-party-in").value=pp.name; $("wsp-party").value=code; wsSugHide("wsp-party-sug"); wsPayShowBal(code);
+}
+function wsPayShowBal(code){
+const b=wsBal(code); const el=$("wsp-pbal"); if(el) el.innerHTML=`Balance: <b style="color:${b>0?'var(--bad)':'var(--ok)'}">${money(Math.abs(b))} ${b>0?'DR (lena)':b<0?'CR (dena)':''}</b>`;
+}
+function wsPayAdd(){
+const code=($("wsp-party")||{}).value||"";
+if(!code) return toast("Party chuno.");
+const pp=wsPartyByCode(code); if(!pp) return toast("Party nahi mili.");
+const dir=$("wsp-dir").value, amt=num($("wsp-amt").value);
+if(!(amt>0)) return toast("Amount sahi nahi.");
+const src = dir==="REBATE" ? "Rebate" : $("wsp-src").value;
+let sdetail="", notes=($("wsp-notes")&&$("wsp-notes").value)||"";
+if(dir!=="REBATE"){
+  if(src==="Cheque"){ const no=($("wsp-chqno")||{}).value||"", dt=($("wsp-chqdt")||{}).value||""; if(!no||!dt) return toast("Cheque number aur date zaroori."); sdetail="Cheque #"+no+" dt "+fmtDate(dt); }
+  if(src==="GPay Others"){ const h=($("wsp-ghead")||{}).value||""; if(!h) return toast("GPay head chuno."); sdetail=h; }
+} else { if(!notes.trim()) return toast("Rebate ka reason likho."); }
+const pdate=($("wsp-date")||{}).value||todayStr();
+window._wsPayStage.push({party_code:code, party_name:pp.name, direction:dir, amount:amt, source:src, source_detail:sdetail, notes, pdate});
+toast(pp.name+" add hua"); render();
+}
+async function wsPaySubmit(){
+if(!window._wsPayStage.length) return toast("List khaali hai.");
+if(!saveOnce("wspb")) return;
+busy(true,"Submitting "+window._wsPayStage.length+" payments…");
+try{
+const res=await gsRun("wsPayBatch",[window._wsPayStage]);
+busy(false); toast((res.count||0)+" payments saved ✓");
+try{ alog("ws_payments", (res.count||0)+" entries"); }catch(_e){}
+window._wsPayStage=[];
+await wsReload();
+}catch(e){ busy(false); toast(e.message); }
+saveDone("wspb");
+}
 function wsExpense(){
 const list=((WS&&WS.expenses)||[]);
 return `<div class="card"><div class="section-h"><h3>＋ Wholesale Expense</h3><div class="ln"></div></div>
@@ -656,13 +742,23 @@ async function wsCancelExp(eno){ if(!confirm(eno+" cancel?")) return; busy(true,
 
 /* ============================ LEDGER ============================ */
 function wsLedger(){
-return `<div class="card"><div class="section-h"><h3>📒 Party Ledger</h3><div class="ln"></div></div>
-<div class="form-grid"><div class="full"><label>Party</label><select id="wsl-party" onchange="wsShowLedger(this.value)">${'<option value="">— select —</option>'+wsParties().map(p=>`<option value="${p.code}">${esc(p.name)} — ${money(wsBal(p.code))}</option>`).join("")}</select></div></div>
-<div id="wsl-out"></div></div>
-<div class="section-h"><h3>Sab parties — balance</h3><div class="ln"></div></div>
+const q=(window._wsLedQ||"").trim().toLowerCase();
+const f=window._wsLedF||"all"; // all | pos | neg
+let parties=wsParties().filter(p=>!q || (p.name+" "+p.code).toLowerCase().includes(q));
+if(f==="pos") parties=parties.filter(p=>wsBal(p.code)>0);
+else if(f==="neg") parties=parties.filter(p=>wsBal(p.code)<0);
+parties=parties.sort((a,b)=>wsBal(b.code)-wsBal(a.code));
+const totOut=parties.reduce((a,p)=>a+Math.max(0,wsBal(p.code)),0);
+const FTABS=[["all","All"],["pos","Outstanding > 0"],["neg","−ve (advance)"]];
+return `<div id="wsl-out"></div>
+<div class="card"><div class="section-h"><h3>📒 Ledgers (${parties.length})</h3><div class="ln"></div></div>
+<div class="toolbar" style="flex-wrap:wrap">
+<input id="wsl-q" autocomplete="off" placeholder="🔍 Party search…" value="${esc(window._wsLedQ||'')}" oninput="window._wsLedQ=this.value;window._refocusId=this.id;render()" style="max-width:220px">
+${FTABS.map(x=>`<button class="btn small ${f===x[0]?'':'ghost'}" onclick="window._wsLedF='${x[0]}';render()">${x[1]}</button>`).join("")}
+<span class="muted" style="align-self:center">Total lena: <b>${money(totOut)}</b></span></div>
 <div class="tbl-wrap"><table><tr><th>Party</th><th>Type</th><th class="r">Balance</th></tr>
-${wsParties().map(p=>{const b=wsBal(p.code); return `<tr class="click" onclick="$('wsl-party').value='${p.code}';wsShowLedger('${p.code}')"><td><b>${esc(p.name)}</b></td><td>${esc(p.ptype)}</td><td class="r" style="color:${b>0?'var(--bad)':b<0?'var(--ok)':''}"><b>${money(Math.abs(b))} ${b>0?'lena':b<0?'dena':''}</b></td></tr>`;}).join("")}
-</table></div>`;
+${parties.map(p=>{const b=wsBal(p.code); return `<tr class="click" onclick="wsShowLedger('${p.code}')"><td><b>${esc(p.name)}</b> <span class="muted">${esc(p.code)}</span></td><td>${esc(p.ptype)}</td><td class="r" style="color:${b>0?'var(--bad)':b<0?'var(--ok)':''}"><b>${money(Math.abs(b))} ${b>0?'DR':b<0?'CR':''}</b></td></tr>`;}).join("")||'<tr><td colspan="3" class="muted">Koi party nahi.</td></tr>'}
+</table></div></div>`;
 }
 async function wsShowLedger(code){
 if(!code) return;
@@ -675,7 +771,7 @@ const body=`<div class="rowline" style="margin-top:.6rem"><span>Opening balance<
 <div class="tbl-wrap"><table><tr><th>Date</th><th>Ref</th><th>Type</th><th class="r">Amount</th><th class="r">Balance</th></tr>
 ${rows.map(r=>{ run+=num(r.delta); return `<tr><td>${fmtDate(r.d)}</td><td>${esc(r.ref)}</td><td>${esc(r.kind)}${r.source?' · '+esc(r.source):''}</td><td class="r" style="color:${num(r.delta)<0?'var(--ok)':'var(--bad)'}">${money(Math.abs(r.delta))} ${num(r.delta)<0?'−':'+'}</td><td class="r"><b>${money(run)}</b></td></tr>`;}).join("")||'<tr><td colspan="5" class="muted">Koi entry nahi.</td></tr>'}
 <tr><td colspan="4" class="r"><b>CLOSING</b></td><td class="r"><b>${money(run)}</b></td></tr></table></div>`;
-const el=$("wsl-out"); if(el) el.innerHTML=body; else openModal("Ledger — "+(p.name||code), body);
+const el=$("wsl-out"); if(el){ el.innerHTML=`<div class="card"><div class="section-h"><h3>📒 ${esc(p.name||code)} <span class="muted">${esc(code)}</span></h3><div class="ln"></div><button class="btn small ghost" onclick="$('wsl-out').innerHTML='';window.scrollTo(0,0)">✖ close</button></div>${body}</div>`; try{window.scrollTo(0,0);}catch(e){} } else openModal("Ledger — "+(p.name||code), body);
 }catch(e){ busy(false); toast(e.message); }
 }
 
