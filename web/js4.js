@@ -16,7 +16,8 @@ window.WS = await gsRun("wsBootstrap",[]);
 busy(false); render();
 }catch(e){ busy(false); toast("Wholesale load fail: "+e.message); }
 }
-function wsReload(){ window.WS=null; wsLoad(); }
+async function wsReload(){ window.WS=null; window._wsLedgerFor=""; await wsLoad(true); }
+function wsLoadForce(){ window.WS=null; window._wsLedgerFor=""; busy(true,"Latest data laa rahe hain…"); gsRun("wsBootstrap",[]).then(d=>{ window.WS=d; busy(false); toast("Refreshed ✓"); render(); }).catch(e=>{ busy(false); toast("Refresh fail: "+e.message); }); }
 
 /* ---------- lookups ---------- */
 function wsCats(){ return (WS&&WS.cats)||[]; }
@@ -46,14 +47,19 @@ return v==null? (pl==="P2"? (it.sp1!=null?num(it.sp1):0) : 0) : num(v);
 function vWSAcct(){
 if(!WS){ wsLoad(); return `<div class="card empty">Wholesale data load ho raha hai…</div>`; }
 const t=window._wsTab;
-const MENU=[["dash","▦ Dashboard"],["masters","⚙️ Masters"],["sale","🧾 Sale"],["purchase","📥 Purchase"],["sreturn","↩ Sale Return"],["hold","⏸ Hold ("+wsVouchers("HOLD").filter(v=>v.status==="Open").length+")"],["payments","💰 Payments"],["stock","🗃 Stock"],["expense","💸 Expense"],["ledger","📒 Ledgers"]];
-const body = t==="dash"?wsDash() : t==="masters"?wsMasters() : t==="purchase"?wsVoucherSection("PURCHASE") : t==="sale"?wsSalePage() : t==="sreturn"?wsVoucherSection("SRETURN") : t==="hold"?wsHolds() : t==="stock"?wsStockView() : t==="payments"?wsPayments() : t==="expense"?wsExpense() : wsLedger();
-return `<datalist id="wsdl-items">${wsItems().map(i=>`<option value="${esc(i.name)} [${i.code}]"></option>`).join("")}</datalist>
-<datalist id="wsdl-parties">${wsParties("CUSTOMER").map(p=>`<option value="${esc(p.name)} [${p.code}]"></option>`).join("")}</datalist>
+const MENU=[["dash","▦ Dashboard"],["masters","⚙️ Masters"],["sale","🧾 Sale"],["purchase","📥 Purchase"],["sreturn","↩ Sale Return"],["sorder","📝 Sales Orders ("+wsVouchers("HOLD").filter(v=>v.status==="Open").length+")"],["pending","🚚 Pending Dispatch ("+wsVouchers("SALE").filter(v=>v.status==="Active"&&v.dispatch_status!=="Dispatched").length+")"],["payments","💰 Payments"],["stock","🗃 Stock"],["expense","💸 Expense"],["ledger","📒 Ledgers"]];
+const body = t==="dash"?wsDash() : t==="masters"?wsMasters() : t==="purchase"?wsVoucherSection("PURCHASE") : t==="sale"?wsSalePage() : t==="sreturn"?wsVoucherSection("SRETURN") : (t==="hold"||t==="sorder")?wsHolds() : t==="pending"?wsPending() : t==="stock"?wsStockView() : t==="payments"?wsPayments() : t==="expense"?wsExpense() : wsLedger();
+return `<style>
+.ws-sug{position:absolute;z-index:60;left:0;right:0;top:100%;background:#fff;border:1px solid #cdd;border-radius:8px;max-height:260px;overflow:auto;box-shadow:0 6px 18px #0003;display:none}
+.ws-sug-item{padding:.5rem .6rem;cursor:pointer;border-bottom:1px solid #eef;font-size:.9rem}
+.ws-sug-item:hover{background:#eef4ff}
+.ws-ta{position:relative}
+@media (prefers-color-scheme:dark){.ws-sug{background:#1a2230;border-color:#345}.ws-sug-item{border-color:#263}.ws-sug-item:hover{background:#243a52}}
+</style>
 <div style="display:flex;gap:.8rem;align-items:flex-start;flex-wrap:wrap">
 <div style="flex:0 0 165px;min-width:150px;display:flex;flex-direction:column;gap:.3rem">
 ${MENU.map(x=>`<button class="btn small ${t===x[0]?'':'ghost'}" style="text-align:left" onclick="window._wsTab='${x[0]}';render()">${x[1]}</button>`).join("")}
-<button class="btn small ghost" style="text-align:left" onclick="wsReload()">🔄 Refresh</button>
+<button class="btn small ghost" style="text-align:left" onclick="wsLoadForce()">🔄 Refresh</button>
 </div>
 <div style="flex:1;min-width:280px">${body}</div>
 </div>`;
@@ -167,9 +173,11 @@ const pt=isP?"SUPPLIER":"CUSTOMER";
 window._wsRows = hold? (hold.items||[]).map(i=>({item_code:i.item_code, warehouse_code:i.warehouse_code, batch:i.batch===""?"__none":i.batch, qty:num(i.qty), price:num(i.price), unit:i.unit||"Box"})) : [wsBlankRow()];
 window._wsVT=T; window._wsHold=hold? hold.vno:"";
 const party=hold? hold.party_code : "";
-openModal((hold?"Hold → ":"")+(T==="PURCHASE"?"Purchase Voucher":T==="SALE"?"Sale Voucher":T==="HOLD"?"Hold Order":"Sale Return"), `
+openModal((hold?"Hold → ":"")+(T==="PURCHASE"?"Purchase Voucher":T==="SALE"?"Sale Voucher":T==="HOLD"?"Sales Order":"Sale Return"), `
 <div class="form-grid">
-<div><label>${isP?"Supplier":"Dealer"} <span class="req">*</span></label><select id="wsv-party" onchange="wsPartyPick()">${'<option value="">— select —</option>'+wsParties(pt).map(p=>`<option value="${p.code}" ${party===p.code?'selected':''}>${esc(p.name)}</option>`).join("")}</select></div>
+<div><label>${isP?"Supplier":"Dealer"} <span class="req">*</span> <span class="muted" style="text-transform:none">(type karo)</span></label>
+<div class="ws-ta"><input id="wsv-party-in" autocomplete="off" placeholder="${isP?'Supplier':'Dealer'} type karo…" value="${party?esc((wsPartyByCode(party)||{}).name||''):''}" oninput="wsPartySuggest(this)" onblur="setTimeout(()=>wsSugHide('wsv-party-sug'),200)" style="width:100%;box-sizing:border-box;padding:.5rem"><div class="ws-sug" id="wsv-party-sug"></div></div>
+<input type="hidden" id="wsv-party" value="${party||''}"></div>
 <div><label>Date</label><input type="date" id="wsv-date" value="${todayStr()}"></div>
 </div>
 <div id="wsv-crinfo" class="muted" style="margin:.3rem 0"></div>
@@ -216,7 +224,7 @@ const stock = r.item_code? wsStockOf(r.item_code, r.warehouse_code||undefined) :
 const bl = r.item_code? wsBatches(r.item_code, r.warehouse_code) : [];
 const idisp=(()=>{const it=wsItemByCode(r.item_code); return it? it.name+" ["+it.code+"]" : (r._txt||"");})();
 return `<div class="item-row" style="grid-template-columns:minmax(170px,1.4fr) 100px 130px 90px 80px ${isP?'':'95px 95px'} 30px;margin-top:.35rem">
-<input list="wsdl-items" placeholder="Item type karo…" value="${esc(idisp)}" style="font-size:.95rem;padding:.5rem" oninput="wsItemTyped(${i},this,false)" onchange="wsItemTyped(${i},this,true)">
+<div class="ws-ta"><input id="wsitem-in-${i}" autocomplete="off" placeholder="Item type karo…" value="${esc(r.item_code?(wsItemByCode(r.item_code)||{}).name||'':(r._txt||''))}" style="font-size:.95rem;padding:.5rem;width:100%;box-sizing:border-box" oninput="wsItemSuggest(${i},this)" onblur="setTimeout(()=>wsSugHide('wsitem-sug-${i}'),200)"><div class="ws-sug" id="wsitem-sug-${i}"></div></div>
 <select title="Warehouse" style="padding:.5rem .3rem" onchange="window._wsRows[${i}].warehouse_code=this.value;wsRenderRows()">${wsWhs().map(w=>`<option value="${w.code}" ${r.warehouse_code===w.code?'selected':''}>${esc(w.name)}</option>`).join("")}</select>
 ${isP? `<input placeholder="Batch no." style="font-size:.95rem;padding:.5rem" value="${esc(r.batch)}" oninput="window._wsRows[${i}].batch=this.value">`
 : `<select title="Batch${stock!=null?' · total '+stock:''}" style="font-size:.9rem;padding:.5rem .3rem" onchange="window._wsRows[${i}].batch=this.value;wsCalc()">
@@ -239,13 +247,48 @@ else{ const hit=wsItems().find(x=>x.name.toLowerCase()===t.toLowerCase()); if(hi
 if(code && code!==window._wsRows[i].item_code){ window._wsRows[i].item_code=code; window._wsRows[i]._manual=false; window._wsRows[i].batch=""; wsRowPrice(i); wsRenderRows(); return; }
 if(!code && commit && t===""){ window._wsRows[i].item_code=""; wsRenderRows(); }
 }
+function wsSugHide(id){ const b=$(id); if(b){ b.style.display="none"; } }
+function wsItemSuggest(i, el){
+const q=String(el.value||"").trim().toLowerCase();
+window._wsRows[i]._txt=el.value;
+const box=$("wsitem-sug-"+i); if(!box) return;
+if(q.length<1){ box.style.display="none"; window._wsRows[i].item_code=""; return; }
+const hits=wsItems().filter(x=>x.name.toLowerCase().includes(q)||x.code.toLowerCase().includes(q)).slice(0,14);
+box.innerHTML=hits.map(x=>`<div class="ws-sug-item" onmousedown="wsItemChoose(${i},'${x.code}')"><b>${esc(x.name)}</b> <span class="muted">${esc(x.code)}${x.sp1!=null?' · ₹'+x.sp1:''}</span></div>`).join("")||'<div class="ws-sug-item muted">koi match nahi</div>';
+box.style.display="block";
+const exact=wsItems().find(x=>x.name.toLowerCase()===q);
+window._wsRows[i].item_code = exact? exact.code : "";
+if(exact && !window._wsRows[i]._manual) wsRowPrice(i);
+}
+function wsItemChoose(i, code){
+window._wsRows[i].item_code=code; window._wsRows[i]._manual=false; window._wsRows[i].batch=""; window._wsRows[i]._txt="";
+wsRowPrice(i); wsSugHide("wsitem-sug-"+i); wsRenderRows();
+}
+function wsPartySuggest(el){
+const ptype = window._wsVT==="PURCHASE" ? "SUPPLIER" : "CUSTOMER";
+const q=String(el.value||"").trim().toLowerCase();
+const box=$("wsv-party-sug"); if(!box) return;
+if(q.length<1){ box.style.display="none"; $("wsv-party").value=""; wsPartyPick(); return; }
+const hits=wsParties(ptype).filter(pp=>pp.name.toLowerCase().includes(q)||pp.code.toLowerCase().includes(q)).slice(0,14);
+box.innerHTML=hits.map(pp=>`<div class="ws-sug-item" onmousedown="wsPartyChoose('${pp.code}')"><b>${esc(pp.name)}</b> <span class="muted">${esc(pp.code)}</span></div>`).join("")||'<div class="ws-sug-item muted">koi match nahi</div>';
+box.style.display="block";
+const exact=wsParties(ptype).find(pp=>pp.name.toLowerCase()===q);
+$("wsv-party").value = exact? exact.code : "";
+if(exact) wsPartyPick();
+}
+function wsPartyChoose(code){
+const pp=wsPartyByCode(code); if(!pp) return;
+if($("wsv-party-in")) $("wsv-party-in").value=pp.name;
+$("wsv-party").value=code; wsSugHide("wsv-party-sug"); wsPartyPick();
+}
 function wsRowPrice(i){
 const r=window._wsRows[i];
 if(window._wsVT!=="PURCHASE" && r.item_code) r.price=wsPriceFor($("wsv-party")?$("wsv-party").value:"", r.item_code);
 }
 function wsCalc(){
 let t=0; window._wsRows.forEach((r,i)=>{ const a=num(r.qty)*num(r.price); t+=a; const el=$("wsv-amt"+i); if(el) el.textContent=money(a); });
-const gt=$("wsv-gt"); if(gt) gt.textContent=money(t + num($("wsv-cart")&&$("wsv-cart").value) + num($("wsv-unl")&&$("wsv-unl").value));
+const sgn=(window._wsVT==="SRETURN")?-1:1;
+const gt=$("wsv-gt"); if(gt) gt.textContent=money(t + sgn*(num($("wsv-cart")&&$("wsv-cart").value) + num($("wsv-unl")&&$("wsv-unl").value)));
 }
 async function wsSaveVoucher(){
 if(!saveOnce("wsv")) return;
@@ -352,7 +395,8 @@ ${num(v.cartage)?`<tr><td colspan="6"></td><td class="r">Cartage</td><td class="
 ${num(v.unloading)?`<tr><td colspan="6"></td><td class="r">Unloading</td><td class="r">${money(v.unloading)}</td></tr>`:""}
 <tr><td colspan="6"></td><td class="r" style="font-size:1rem"><b>G.Total</b></td><td class="r" style="font-size:1rem;color:var(--bad)"><b>${money(v.grand_total)}</b></td></tr>
 </table></div>
-${(v.delivery_address||v.driver||v.delivery_phone)?`<div class="rowline"><span>Delivery / Others</span><b>${esc(v.delivery_address||"—")}${v.delivery_phone?" · Ph "+esc(v.delivery_phone):""}${v.driver?" · 🛺 "+esc(v.driver):""}</b></div>`:""}
+${(v.delivery_address||v.delivery_phone||v.notes)?`<div class="rowline"><span>Delivery / Remarks</span><b>${esc(v.delivery_address||"—")}${v.delivery_phone?" · Ph "+esc(v.delivery_phone):""}${v.notes?" · "+esc(v.notes):""}</b></div>`:""}
+<div class="rowline"><span>Dispatch</span><b>${v.dispatch_status==="Dispatched"?`<span class="pill p-ok">✓ Dispatched</span>`:v.dispatch_status==="Partially Dispatched"?`<span class="pill p-warn">◑ Partially</span>`:`<span class="pill p-bad">⏳ Pending</span>`}${v.auto_person?` · 🛺 ${esc(v.auto_person)}`:""}${v.dispatch_notes?` · ${esc(v.dispatch_notes)}`:""}</b></div>
 <div class="rowline"><span>Party Balance</span><b style="color:${bal>0?'var(--bad)':'var(--ok)'}">${money(Math.abs(bal))} (${bal>=0?'DR':'CR'})</b></div>
 <div class="muted" style="font-size:.75rem">By ${esc(v.created_by)} · ${esc(String(v.created_at).slice(0,16).replace("T"," "))}${v.notes?' · '+esc(v.notes):''}</div>
 <div class="toolbar" style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.6rem;flex-wrap:wrap">
@@ -360,6 +404,7 @@ ${(v.delivery_address||v.driver||v.delivery_phone)?`<div class="rowline"><span>D
 <button class="btn" onclick="wsSaleEditStart(null);render()">＋ ADD</button>
 ${v.status==="Active"?`<button class="btn dark" onclick="wsSaleEditStart(wsVouchers('SALE')[window._wsS.idx]);render()">✎ EDIT</button>`:""}
 <button class="btn ghost" onclick="wsPrintVoucher('${v.vno}')">🖨 PRINT</button>
+${v.status==="Active"&&v.dispatch_status!=="Dispatched"?`<button class="btn" style="background:var(--ok)" onclick="wsDispatchModal('${v.vno}')">🚚 Update Dispatch</button>`:""}
 <button class="btn ghost" ${window._wsS.idx>=list.length-1?'disabled':''} onclick="window._wsS.idx++;render()">← BACK</button>
 <button class="btn ghost" ${window._wsS.idx<=0?'disabled':''} onclick="window._wsS.idx--;render()">NEXT →</button>
 ${v.status==="Active"?`<button class="btn small danger ghost" style="margin-left:auto" onclick="wsCancelV('${v.vno}')">✖ Cancel voucher</button>`:""}
@@ -370,12 +415,12 @@ const editing=window._wsEditVno, fromHold=window._wsHold;
 setTimeout(()=>{ wsRenderRows(); wsPartyPick(); },0);
 return `<div class="card" style="max-width:980px">
 <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:.4rem;border-bottom:2px solid var(--brand);padding-bottom:.5rem;margin-bottom:.6rem">
-<div><b style="font-size:1.1rem">${editing? "✎ EDIT — "+editing : fromHold? "Hold "+fromHold+" → SALE" : "＋ NEW SALE VOUCHER"}</b></div>
+<div><b style="font-size:1.1rem">${editing? "✎ EDIT — "+editing : fromHold? "Sales Order "+fromHold+" → SALE CHALLAN" : "＋ NEW SALE CHALLAN"}</b></div>
 <div><input type="date" id="wsv-date" value="${esc(window._wsSDate||todayStr())}" style="padding:.3rem"></div>
 </div>
 <div class="form-grid">
 <div class="full"><label>Dealer <span class="req">*</span> <span class="muted" style="text-transform:none">(type karo — suggestions aayenge)</span></label>
-<input list="wsdl-parties" id="wsv-party-in" placeholder="Dealer ka naam type karo…" value="${(()=>{const p=wsPartyByCode(window._wsSParty); return p? esc(p.name)+" ["+p.code+"]" : "";})()}" oninput="wsPartyTyped(this)" onchange="wsPartyTyped(this)" style="font-size:1rem;padding:.55rem">
+<div class="ws-ta"><input id="wsv-party-in" autocomplete="off" placeholder="Dealer ka naam type karo…" value="${(()=>{const p=wsPartyByCode(window._wsSParty); return p? esc(p.name) : "";})()}" oninput="wsPartySuggest(this)" onblur="setTimeout(()=>wsSugHide('wsv-party-sug'),200)" style="font-size:1rem;padding:.55rem;width:100%;box-sizing:border-box"><div class="ws-sug" id="wsv-party-sug"></div></div>
 <input type="hidden" id="wsv-party" value="${esc(window._wsSParty||'')}"></div>
 </div>
 <div id="wsv-crinfo" class="muted" style="margin:.3rem 0"></div>
@@ -389,8 +434,8 @@ return `<div class="card" style="max-width:980px">
 <div class="rowline" style="margin-top:.5rem"><span>G.TOTAL</span><b id="wsv-gt" style="font-size:1.1rem">₹0</b></div>
 <div class="toolbar" style="margin-top:.7rem;border-top:1px solid var(--line);padding-top:.6rem;flex-wrap:wrap">
 <button class="btn" onclick="wsSaveVoucher()">💾 SAVE${editing?" CHANGES":""}</button>
-${(!editing && !fromHold)?`<button class="btn ghost" onclick="window._wsVT='HOLD';wsSaveVoucher()">⏸ Save as Hold</button>`:""}
-<button class="btn dark" onclick="wsOthersModal()">OTHERS (address · phone · driver)</button>
+${(!editing && !fromHold)?`<button class="btn ghost" onclick="window._wsVT='HOLD';wsSaveVoucher()">📝 Save as Sales Order</button>`:""}
+<button class="btn dark" onclick="wsOthersModal()">OTHERS (address · phone · remarks)</button>
 <button class="btn ghost" style="margin-left:auto" onclick="wsSaleExit()">✖ Cancel (bina save)</button>
 </div></div>`;
 }
@@ -401,21 +446,20 @@ openModal("Others Details", `
 <div class="form-grid">
 <div class="full"><label>Site / Delivery address</label><input id="wso-addr" value="${esc(O.addr)}" placeholder="khaali = pickup/counter"></div>
 <div><label>Delivery phone</label><input id="wso-dph" value="${esc(O.dph||((p&&p.phone)||""))}"></div>
-<div><label>Driver / Auto</label><input id="wso-drv" value="${esc(O.driver)}" placeholder="jaise Sonu — auto wale ka naam"></div>
-<div class="full"><label>Remarks</label><input id="wso-notes" value="${esc(O.notes)}"></div>
+<div class="full"><label>Remarks <span class="muted" style="text-transform:none">(slip par print hoga)</span></label><input id="wso-notes" value="${esc(O.notes)}"></div>
 </div>
-<div style="margin-top:.8rem"><button class="btn" onclick="window._wsOthers={addr:$('wso-addr').value, dph:$('wso-dph').value, driver:$('wso-drv').value, notes:$('wso-notes').value};closeModal();toast('Others saved — ab voucher SAVE karo')">OK</button></div>`);
+<div style="margin-top:.8rem"><button class="btn" onclick="window._wsOthers={addr:$('wso-addr').value, dph:$('wso-dph').value, driver:(window._wsOthers&&window._wsOthers.driver)||"", notes:$('wso-notes').value};closeModal();toast('Others saved — ab voucher SAVE karo')">OK</button></div>`);
 }
 /* ============================ HOLD ============================ */
 function wsHolds(){
 const open=wsVouchers("HOLD").filter(v=>v.status==="Open");
 const byP={}; open.forEach(v=>{ (byP[v.party_name]=byP[v.party_name]||[]).push(v); });
-return `<div class="card"><div class="section-h"><h3>⏸ Hold Orders (${open.length})</h3><div class="ln"></div><button class="btn" onclick="wsOpenVoucher('HOLD')">＋ New Hold</button></div>
-<div class="muted">Hold = maal roka hua — stock view mein minus, par dealer ke ledger mein NAHI. Sale banate hi ledger mein aayega.</div></div>
+return `<div class="card"><div class="section-h"><h3>📝 Sales Orders (${open.length})</h3><div class="ln"></div><button class="btn" onclick="wsOpenVoucher('HOLD')">＋ New Sales Order</button></div>
+<div class="muted">Sales Order = order mila, maal roka — stock mein minus, par dealer ke ledger mein NAHI. Maal final ho to "→ Sale Challan" banao, tab ledger mein aayega aur Pending Dispatch mein chala jayega.</div></div>
 ${Object.keys(byP).length? Object.keys(byP).map(pn=>`<div class="section-h"><h3>${esc(pn)} (${byP[pn].length})</h3><div class="ln"></div></div>
 <div class="tbl-wrap"><table><tr><th>V.No</th><th>Date</th><th>Items</th><th class="r">Value</th><th></th></tr>
 ${byP[pn].map(v=>`<tr><td><b>${esc(v.vno)}</b></td><td>${fmtDate(v.vdate)}</td><td class="muted" style="font-size:.75rem">${(v.items||[]).map(i=>esc(i.item_name)+" ×"+i.qty).join(", ")}</td><td class="r">${money(v.grand_total)}</td>
-<td style="white-space:nowrap"><button class="btn small" onclick="wsHoldToSale('${v.vno}')">→ Sale</button>
+<td style="white-space:nowrap"><button class="btn small" onclick="wsHoldToSale('${v.vno}')">→ Sale Challan</button>
 <button class="btn small ghost" onclick="wsViewVoucher('${v.vno}')">View</button>
 <button class="btn small danger ghost" onclick="wsCancelV('${v.vno}')">✖</button></td></tr>`).join("")}</table></div>`).join("")
 : `<div class="card empty">Koi open hold nahi.</div>`}`;
@@ -426,6 +470,50 @@ window._wsTab="sale"; wsSaleEditStart(v, {hold:v.vno});
 render();
 }
 
+/* ============================ DISPATCH ============================ */
+function wsAutoPersons(){ try{ return (DB.AutoPersons||[]).filter(a=>a&&a.Name).map(a=>({name:a.Name, phone:a.DriverNumber||a.Phone||""})); }catch(e){ return []; } }
+function wsDispatchModal(vno){
+const v=((WS&&WS.vouchers)||[]).find(x=>x.vno===vno); if(!v) return;
+const autos=wsAutoPersons();
+openModal("🚚 Update Dispatch — "+vno, `
+<div class="rowline"><span>Dealer</span><b>${esc(v.party_name)}</b></div>
+<div class="rowline"><span>Items</span><b>${(v.items||[]).reduce((a,i)=>a+num(i.qty),0)} ${(v.items||[])[0]?esc((v.items||[])[0].unit||"Box"):""}</b></div>
+<div class="form-grid" style="margin-top:.5rem">
+<div class="full"><label>Dispatch status <span class="req">*</span></label><select id="wsd-st">
+<option value="Partially Dispatched" ${v.dispatch_status==="Partially Dispatched"?"selected":""}>Partially Dispatched</option>
+<option value="Dispatched" ${v.dispatch_status==="Dispatched"?"selected":""}>Fully Dispatched</option>
+<option value="">Pending (wapas)</option></select></div>
+<div class="full"><label>Auto person</label><select id="wsd-auto">${'<option value="">— select —</option>'+autos.map(a=>`<option value="${esc(a.name)}" ${v.auto_person===a.name?"selected":""}>${esc(a.name)}${a.phone?" · "+esc(a.phone):""}</option>`).join("")}</select>
+${autos.length?'':'<div class="muted" style="color:var(--bad)">Auto Persons master khaali hai — Retail → Auto Persons mein add karo.</div>'}</div>
+<div class="full"><label>Notes</label><input id="wsd-notes" value="${esc(v.dispatch_notes||'')}" placeholder="jaise: 2 item kal jayenge"></div>
+</div>
+<div style="margin-top:.8rem"><button class="btn" onclick="wsSaveDispatch('${vno}')">Save</button></div>`);
+}
+async function wsSaveDispatch(vno){
+if(!saveOnce("wsd")) return;
+busy(true,"Saving dispatch…");
+try{
+await gsRun("wsDispatch",[vno, $("wsd-st").value, $("wsd-auto").value, $("wsd-notes").value]);
+busy(false); closeModal(); toast("Dispatch updated ✓");
+try{ alog("ws_dispatch", vno+" "+$("wsd-st").value); }catch(_e){}
+await wsReload();
+}catch(e){ busy(false); toast(e.message); }
+saveDone("wsd");
+}
+function wsPending(){
+const F=window._wsPendF=window._wsPendF||{from:"2000-01-01",to:"2099-12-31"};
+const list=wsVouchers("SALE").filter(v=>v.status==="Active" && v.dispatch_status!=="Dispatched" && wsInRange(v,"_wsPendF"))
+  .sort((a,b)=>a.vdate<b.vdate?-1:1);
+return `<div class="card"><div class="section-h"><h3>🚚 Pending Dispatch (${list.length})</h3><div class="ln"></div></div>
+<div class="muted">Sale challan ban gaya, maal abhi gaya nahi. Maal jaate waqt "Update" se Partially / Fully + auto person set karo.</div>
+${wsDateFilterBar("_wsPendF")}
+<div class="tbl-wrap"><table><tr><th>V.No</th><th>Date</th><th>Dealer</th><th class="r">Qty</th><th class="r">G.Total</th><th>Status</th><th>Auto</th><th></th></tr>
+${list.map(v=>{let tq=0;(v.items||[]).forEach(i=>tq+=num(i.qty)); return `<tr><td><b>${esc(v.vno)}</b></td><td>${fmtDate(v.vdate)}</td><td>${esc(v.party_name)}</td><td class="r">${tq}</td><td class="r"><b>${money(v.grand_total)}</b></td>
+<td>${v.dispatch_status==="Partially Dispatched"?'<span class="pill p-warn">◑ Partial</span>':'<span class="pill p-bad">⏳ Pending</span>'}</td><td>${esc(v.auto_person||"—")}</td>
+<td style="white-space:nowrap"><button class="btn small" style="background:var(--ok)" onclick="wsDispatchModal('${v.vno}')">🚚 Update</button>
+<button class="btn small ghost" onclick="window._wsTab='sale';window._wsS={mode:'sheet',idx:wsVouchers('SALE').findIndex(x=>x.vno==='${v.vno}')};render()">View</button></td></tr>`;}).join("")||'<tr><td colspan="8" class="muted">Sab dispatch ho gaya. 🎉</td></tr>'}
+</table></div></div>`;
+}
 /* ============================ STOCK (Busy-style: Category → Items → Item Ledger) ============================ */
 function wsOpeningOf(item){ return ((WS&&WS.stock)||[]).filter(s=>s.item_code===item).reduce((a,s)=>a+num(s.opening_qty),0); }
 function wsStockView(){
@@ -453,7 +541,18 @@ const o=its.reduce((a,i)=>a+wsOpeningOf(i.code),0), q=its.reduce((a,i)=>a+wsStoc
 gO+=o; gC+=q;
 return `<tr class="click" onclick="window._wsCat='${c.code}';render()"><td><b>${esc(c.name)}</b></td><td class="muted">${its.length} items</td><td class="r">${o||""}</td><td class="r"><b>${q}</b></td></tr>`;
 }).join("");
+const gq=(window._wsStGlobalQ||"").trim().toLowerCase();
+if(gq.length>=1){
+const hits=wsItems().filter(i=>(i.name+" "+i.code).toLowerCase().includes(gq)).slice(0,200);
+return `<div class="card"><div class="section-h"><h3>🔍 Stock search</h3><div class="ln"></div>
+<input id="ws-gstq" autocomplete="off" placeholder="Item ke kuch akshar…" value="${esc(window._wsStGlobalQ||'')}" oninput="window._wsStGlobalQ=this.value;window._refocusId=this.id;render()" style="max-width:260px">
+<button class="btn small ghost" onclick="window._wsStGlobalQ='';render()">✖</button></div>
+<div class="tbl-wrap"><table><tr><th>Item Name</th><th>Category</th><th>Itemcode</th><th class="r">Closing</th></tr>
+${hits.map(i=>{const c=wsStockOf(i.code); return `<tr class="click" onclick="window._wsCat='';window._wsStItem='${i.code}';render()"><td><b>${esc(i.name)}</b></td><td class="muted">${esc(wsCatName(i.category_code))}</td><td>${esc(i.code)}</td><td class="r" style="${c<0?'color:var(--bad)':''}"><b>${c}</b></td></tr>`;}).join("")||'<tr><td colspan="4" class="muted">Koi item nahi mila.</td></tr>'}
+</table></div></div>`;
+}
 return `<div class="card"><div class="section-h"><h3>🗃 Stock Ledger — category chuno</h3><div class="ln"></div>
+<input id="ws-gstq" autocomplete="off" placeholder="🔍 Item search (kuch akshar)…" value="" oninput="window._wsStGlobalQ=this.value;window._refocusId=this.id;render()" style="max-width:240px">
 <button class="btn small ghost" onclick="wsOpenOpening()">＋ Opening stock</button></div>
 <div class="tbl-wrap"><table><tr><th>Itemlist (Category)</th><th>Desc</th><th class="r">Opening Balance</th><th class="r">Closing Balance</th></tr>
 ${catRows||'<tr><td colspan="4" class="muted">Pehle Masters mein categories banao.</td></tr>'}
@@ -602,7 +701,7 @@ const half=(label)=>`<div class="half"><div class="copy">${label}</div>
 <div style="text-align:right">Date: ${fmtDate(v.vdate)}<br>By: ${esc(v.created_by)}</div></div>
 <div><b>${esc(v.party_name)}</b> · ${esc(p.phone||"")}${v.delivery_address?`<br><b>Deliver to:</b> ${esc(v.delivery_address)}${v.delivery_phone?" · Ph: "+esc(v.delivery_phone):""}`:""}</div>
 <table><tr><th>Item</th><th class="r">Qty</th>${withPrice?'<th class="r">Price</th><th class="r">Amount</th>':''}</tr>${itemRows}${totals}</table>
-<div class="ft">${v.vtype==="HOLD"?"<b>HOLD — maal roka gaya hai, bill nahi bana.</b><br>":""}${v.driver?`Driver/Auto: <span class="badge" style="display:inline-block;border:1px solid #0B1D33;padding:1px 5px;border-radius:8px;font-weight:bold">${esc(v.driver)}</span><br>`:""}Created: ${esc(String(v.created_at).slice(0,16).replace("T"," "))} ${v.status==="Cancelled"?"<b style='color:#C0392B'> · CANCELLED</b>":""}</div></div>`;
+<div class="ft">${v.vtype==="HOLD"?"<b>SALES ORDER — maal roka gaya hai, bill nahi bana.</b><br>":""}${v.auto_person?`Auto: <span class="badge" style="display:inline-block;border:1px solid #0B1D33;padding:1px 5px;border-radius:8px;font-weight:bold">${esc(v.auto_person)}</span><br>`:""}${v.notes?`Remarks: ${esc(v.notes)}<br>`:""}Created: ${esc(String(v.created_at).slice(0,16).replace("T"," "))} ${v.status==="Cancelled"?"<b style='color:#C0392B'> · CANCELLED</b>":""}</div></div>`;
 printHTML(`<!DOCTYPE html><html><head><title>${esc(v.vno)}</title><style>
 @page{size:A5 landscape;margin:5mm}
 html,body{margin:0;padding:0} body{font-family:Arial,Helvetica,sans-serif;font-size:9px;color:#111}
