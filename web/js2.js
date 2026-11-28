@@ -3260,6 +3260,11 @@ busy(false); toast(on?"Marked checked ✓":"Moved back to pending"); render();
 }catch(err){ busy(false); toast("Failed: "+err.message); }
 }
 function vPayCheck(){
+// v47: Retail | Wholesale toggle (wholesale non-cash entries Admin approval ke baad hi ledger mein ginti)
+const mode=window._pcMode||"retail";
+const wsPend=(window.WS&&WS.payments)? WS.payments.filter(p=>p.status==="Active"&&p.check_status!=="Approved"&&!(p.source==="Cash"&&p.direction!=="REBATE")).length : null;
+const modeBar=`<div class="toolbar"><button class="btn small ${mode==='retail'?'':'ghost'}" onclick="window._pcMode='retail';render()">🏪 Retail</button><button class="btn small ${mode==='ws'?'':'ghost'}" onclick="window._pcMode='ws';render()">🧾 Wholesale${wsPend!=null?" ("+wsPend+")":""}</button></div>`;
+if(mode==="ws" && isAdmin()) return modeBar + (window.wsPayCheckSection? wsPayCheckSection() : '<div class="card empty">Loading…</div>');
 const tab=window._pcTab||"pending", fs=window._pcSrc||"all", fh=window._pcHead||"all", fb=window._pcBr||"all";
 let list=(DB.Payments||[]).filter(p=>p.Source && p.Source!=="Cash" && p.Source!=="Rebate");
 if(isAdmin() && fb!=="all") list=list.filter(p=>{ const b=userBranch(p.ReceivedBy||""); return fb==="__none"? !b : b===fb; }); // v35.2 branch filter
@@ -3270,7 +3275,7 @@ const totN=list.length;
 list = tab==="pending" ? list.filter(p=>(p.CheckStatus||"")!=="Checked") : list.filter(p=>p.CheckStatus==="Checked");
 list=[...list].sort((a,b)=>a.Timestamp<b.Timestamp?1:-1);
 const heads=[...new Set([...(DB.GpayHeads||[]).map(x=>x.Name), ...(DB.Payments||[]).filter(p=>p.Source==="GPay Others").map(p=>p.SourceDetail).filter(Boolean)])]; // v25: cheque details heads mein nahi
-return `<div class="toolbar">
+return `${isAdmin()?modeBar:""}<div class="toolbar">
 <button class="btn ${tab==='pending'?'':'ghost'}" onclick="window._pcTab='pending';render()">Check Pending (${pendN})</button>
 <button class="btn ${tab==='checked'?'':'ghost'}" onclick="window._pcTab='checked';render()">Checked (${totN-pendN})</button>
 ${isAdmin()?`<select style="max-width:180px" onchange="window._pcBr=this.value;render()"><option value="all" ${fb==='all'?'selected':''}>🏢 All branches</option>${(DB.Branches||[]).map(b=>`<option value="${esc(b.Name)}" ${fb===b.Name?'selected':''}>📍 ${esc(b.Name)}</option>`).join("")}<option value="__none" ${fb==='__none'?'selected':''}>HO / no branch</option></select>`:""}
@@ -4772,7 +4777,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v46 — WS: no auto-print, stock-minus warning, print modal, Purchase/Return/SO edit + filters, Stock PDF; busy watchdog + fetch timeout";
+window._BUILD = "BUILD v47 — Cheque Register (retail+wholesale) · Wholesale payment approval (Admin checker) · Ledger total outstanding";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;

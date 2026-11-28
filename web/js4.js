@@ -709,7 +709,7 @@ ${stage.map((e,i)=>`<tr><td>${esc(e.party_name)}</td><td>${e.direction==="IN"?"R
 </div>
 <div class="section-h"><h3>Recent (${list.length})</h3><div class="ln"></div></div>
 ${list.length? `<div class="tbl-wrap"><table><tr><th>No</th><th>Date</th><th>Party</th><th class="r">Amount</th><th>Dir</th><th>Source</th><th>Notes</th><th></th></tr>
-${list.slice(0,60).map(p=>`<tr class="${p.status==='Cancelled'?'muted':''}"><td>${esc(p.pno)}</td><td>${fmtDate(p.pdate)}</td><td>${esc(p.party_name)}</td><td class="r"><b>${money(p.amount)}</b></td><td>${p.direction==="IN"?'<span class="pill p-ok">Receipt</span>':p.direction==="REBATE"?'<span class="pill p-warn">Rebate</span>':'<span class="pill p-bad">Payment</span>'}</td><td>${esc(p.source)}${p.source_detail?"<div class='muted' style='font-size:.72rem'>"+esc(p.source_detail)+"</div>":""}</td><td class="muted">${esc(p.notes||"")}</td>
+${list.slice(0,60).map(p=>`<tr class="${p.status==='Cancelled'?'muted':''}"><td>${esc(p.pno)}</td><td>${fmtDate(p.pdate)}</td><td>${esc(p.party_name)}</td><td class="r"><b>${money(p.amount)}</b></td><td>${p.direction==="IN"?'<span class="pill p-ok">Receipt</span>':p.direction==="REBATE"?'<span class="pill p-warn">Rebate</span>':'<span class="pill p-bad">Payment</span>'}${p.check_status&&p.check_status!=="Approved"?'<div class="muted" style="font-size:.66rem">⏳ approval pending</div>':''}</td><td>${esc(p.source)}${p.source_detail?"<div class='muted' style='font-size:.72rem'>"+esc(p.source_detail)+"</div>":""}</td><td class="muted">${esc(p.notes||"")}</td>
 <td>${p.status==='Active'?`<button class="btn small danger ghost" onclick="wsCancelPay('${p.pno}')">✖</button>`:'Cancelled'}</td></tr>`).join("")}</table></div>`:`<div class="card empty">Koi payment nahi.</div>`}`;
 }
 function wsPayPartySuggest(el){
@@ -793,12 +793,15 @@ else if(f==="neg") parties=parties.filter(p=>wsBal(p.code)<0);
 parties=parties.sort((a,b)=>wsBal(b.code)-wsBal(a.code));
 const totOut=parties.reduce((a,p)=>a+Math.max(0,wsBal(p.code)),0);
 const FTABS=[["all","All"],["pos","Outstanding > 0"],["neg","−ve (advance)"]];
+const allOut=wsParties().reduce((a,p)=>a+Math.max(0,wsBal(p.code)),0), allAdv=wsParties().reduce((a,p)=>a+Math.max(0,-wsBal(p.code)),0);
 return `<div id="wsl-out"></div>
-<div class="card"><div class="section-h"><h3>📒 Ledgers (${parties.length})</h3><div class="ln"></div></div>
+<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:.5rem;border-bottom:2px solid var(--brand);padding-bottom:.5rem;margin-bottom:.6rem">
+<h3 style="margin:0">📒 Ledgers (${parties.length})</h3>
+<div style="text-align:right"><div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.5px">Total Outstanding</div><div style="font-size:1.4rem;font-weight:800;color:var(--bad)">${money(allOut)}</div>${allAdv?`<div class="muted" style="font-size:.72rem">Advance/dena: ${money(allAdv)}</div>`:""}</div></div>
 <div class="toolbar" style="flex-wrap:wrap">
 <input id="wsl-q" autocomplete="off" placeholder="🔍 Party search…" value="${esc(window._wsLedQ||'')}" oninput="window._wsLedQ=this.value;window._refocusId=this.id;render()" style="max-width:220px">
 ${FTABS.map(x=>`<button class="btn small ${f===x[0]?'':'ghost'}" onclick="window._wsLedF='${x[0]}';render()">${x[1]}</button>`).join("")}
-<span class="muted" style="align-self:center">Total lena: <b>${money(totOut)}</b></span></div>
+<span class="muted" style="align-self:center">Is list ka: <b>${money(totOut)}</b></span></div>
 <div class="tbl-wrap"><table><tr><th>Party</th><th>Type</th><th class="r">Balance</th></tr>
 ${parties.map(p=>{const b=wsBal(p.code); return `<tr class="click" onclick="wsShowLedger('${p.code}')"><td><b>${esc(p.name)}</b> <span class="muted">${esc(p.code)}</span></td><td>${esc(p.ptype)}</td><td class="r" style="color:${b>0?'var(--bad)':b<0?'var(--ok)':''}"><b>${money(Math.abs(b))} ${b>0?'DR':b<0?'CR':''}</b></td></tr>`;}).join("")||'<tr><td colspan="3" class="muted">Koi party nahi.</td></tr>'}
 </table></div></div>`;
@@ -812,7 +815,7 @@ const p=wsPartyByCode(code)||{};
 let run=num(p.opening_balance);
 const body=`<div class="rowline" style="margin-top:.6rem"><span>Opening balance</span><b>${money(run)}</b></div>
 <div class="tbl-wrap"><table><tr><th>Date</th><th>Ref</th><th>Type</th><th class="r">Amount</th><th class="r">Balance</th></tr>
-${rows.map(r=>{ run+=num(r.delta); return `<tr><td>${fmtDate(r.d)}</td><td>${esc(r.ref)}</td><td>${esc(r.kind)}${r.source?' · '+esc(r.source):''}</td><td class="r" style="color:${num(r.delta)<0?'var(--ok)':'var(--bad)'}">${money(Math.abs(r.delta))} ${num(r.delta)<0?'−':'+'}</td><td class="r"><b>${money(run)}</b></td></tr>`;}).join("")||'<tr><td colspan="5" class="muted">Koi entry nahi.</td></tr>'}
+${rows.map(r=>{ run+=num(r.delta); const pa=r.check_status && r.check_status!=="Approved"; return `<tr style="${pa?'opacity:.75':''}"><td>${fmtDate(r.d)}</td><td>${esc(r.ref)}</td><td>${esc(r.kind)}${r.source?' · '+esc(r.source):''}${pa?' <span class="pill p-warn" style="font-size:.62rem">pending approval</span>':''}</td><td class="r" style="color:${num(r.delta)<0?'var(--ok)':num(r.delta)>0?'var(--bad)':'#999'}">${pa?'<s>'+money(r.amt)+'</s>':money(Math.abs(r.delta))+' '+(num(r.delta)<0?'−':'+')}</td><td class="r"><b>${money(run)}</b></td></tr>`;}).join("")||'<tr><td colspan="5" class="muted">Koi entry nahi.</td></tr>'}
 <tr><td colspan="4" class="r"><b>CLOSING</b></td><td class="r"><b>${money(run)}</b></td></tr></table></div>`;
 const el=$("wsl-out"); if(el){ el.innerHTML=`<div class="card"><div class="section-h"><h3>📒 ${esc(p.name||code)} <span class="muted">${esc(code)}</span></h3><div class="ln"></div><button class="btn small ghost" onclick="$('wsl-out').innerHTML='';window.scrollTo(0,0)">✖ close</button></div>${body}</div>`; try{window.scrollTo(0,0);}catch(e){} } else openModal("Ledger — "+(p.name||code), body);
 }catch(e){ busy(false); toast(e.message); }

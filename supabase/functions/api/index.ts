@@ -216,6 +216,11 @@ async function requireSwitch(ctx: Ctx) {
   if (!isSwitchRole(ur.role)) throw new Error("Not allowed");
   return ur;
 }
+async function requireRole(ctx: Ctx, re: RegExp, what: string) {
+  const ur = await userRec(ctx.u);
+  if (isAdminRole(ur.role) || re.test(S(ur.role))) return ur;
+  throw new Error(what + " ke liye access nahi");
+}
 async function requireWholesale(ctx: Ctx) {
   const ur = await userRec(ctx.u);
   if (isAdminRole(ur.role) || /(^|[,\s])EA([,\s]|$)/i.test(S(ur.role))) return ur;
@@ -973,6 +978,16 @@ async function route(fn: string, args: unknown[], auth: Auth): Promise<unknown> 
     try { const ur0 = await userRec(ctx.u); await accessLog(ctx.u, ur0.name, ur0.role, "ledger_pdf", S(args?.[0]), 1, ctx.imp); } catch (_) { /* */ }
   }
   if (fn === "readSched" || fn === "appendSched" || fn === "updateSched") await requireOwner(ctx);
+  // ---- Cheque Register (Admin / CRM / Accountant) ----
+  if (fn === "chqRegister") { await requireRole(ctx, /crm|account/i, "Cheque Register"); return await wsRpc("cheque_register", { p_from: args?.[0] || null, p_to: args?.[1] || null }); }
+  if (fn === "chqSet") {
+    const action = S(args?.[2]);
+    const ur = (action === "clear" || action === "bounce") ? await requireRole(ctx, /account/i, "Cheque clear/bounce (Accountant)") : await requireRole(ctx, /crm/i, "Cheque send/re-present (CRM)");
+    const r = await wsRpc("cheque_set", { p_origin: S(args?.[0]), p_ref: S(args?.[1]), p_action: action, p_by: ur.name, p_note: S(args?.[3]) });
+    try { await accessLog(ctx.u, ur.name, ur.role, "cheque_" + action, S(args?.[0]) + " " + S(args?.[1]), 1, ctx.imp); } catch (_) { /* */ }
+    return r;
+  }
+  if (fn === "wsPayApprove") { const ur = await requireOwner(ctx); return await wsRpc("ws_approve_payment", { p_pno: S(args?.[0]), p_by: ur.name }); }
   if (fn.startsWith("ws")) { // Wholesale: Admin + EA
     const ur = await requireWholesale(ctx);
     switch (fn) {
