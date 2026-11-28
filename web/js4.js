@@ -738,7 +738,7 @@ if(!(amt>0)) return toast("Amount sahi nahi.");
 const src = dir==="REBATE" ? "Rebate" : $("wsp-src").value;
 let sdetail="", notes=($("wsp-notes")&&$("wsp-notes").value)||"";
 if(dir!=="REBATE"){
-  if(src==="Cheque"){ const no=($("wsp-chqno")||{}).value||"", dt=($("wsp-chqdt")||{}).value||""; if(!no||!dt) return toast("Cheque number aur date zaroori."); sdetail="Cheque #"+no+" dt "+fmtDate(dt); }
+  if(src==="Cheque"){ const no=($("wsp-chqno")||{}).value||"", dt=($("wsp-chqdt")||{}).value||""; if(!no||!dt) return toast("Cheque number aur date zaroori."); const dd=String(dt).slice(0,10).split("-"); sdetail="Cheque #"+no+" dt "+dd[2]+"/"+dd[1]+"/"+dd[0]; } // dd/mm/yyyy (retail jaisa)
   if(src==="GPay Others"){ const h=($("wsp-ghead")||{}).value||""; if(!h) return toast("GPay head chuno."); sdetail=h; }
 } else { if(!notes.trim()) return toast("Rebate ka reason likho."); }
 const pdate=($("wsp-date")||{}).value||todayStr();

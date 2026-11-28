@@ -4777,7 +4777,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v47.2 — Cheque Register: ek cheque-date filter (default aaj), entry date hata di";
+window._BUILD = "BUILD v47.3 — cheque date parse fix";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;
