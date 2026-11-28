@@ -4777,7 +4777,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v47.1 — Cheque Register: Wholesale CRM right + wholesale sidebar entry";
+window._BUILD = "BUILD v47.2 — Cheque Register: ek cheque-date filter (default aaj), entry date hata di";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;
