@@ -83,7 +83,9 @@ const from = d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+Stri
 return {from, to};
 }
 function toast(msg, ms=2600){ const t=$("toast"); t.textContent=msg; t.style.display="block"; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display="none", ms); }
-function busy(on, msg){ $("busy").classList.toggle("on", !!on); if(msg) $("busy-msg").textContent = msg; }
+function busy(on, msg){ $("busy").classList.toggle("on", !!on); if(msg) $("busy-msg").textContent = msg;
+/* v46: watchdog — agar 60s tak overlay on raha (server/network atka) to khud hata do, warna poori screen un-clickable reh jaati thi */
+clearTimeout(window._busyWD); if(on){ window._busyWD=setTimeout(()=>{ if($("busy").classList.contains("on")){ $("busy").classList.remove("on"); toast("Server se jawab nahi aaya — dobara try karo"); } }, 60000); } }
 /* v33.2 DOUBLE-TAP GUARD: phone par Save do baar dab jaata hai (busy overlay aane se pehle) → do rows. saveOnce(key) pehli call par true, lock 8s ya saveDone(key) tak. */
 window._saveLocks={};
 function saveOnce(key){ const now=Date.now(); if(window._saveLocks[key] && now-window._saveLocks[key]<8000) return false; window._saveLocks[key]=now; return true; }

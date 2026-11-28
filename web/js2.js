@@ -4772,7 +4772,7 @@ if(q.Status!=="Sent"){ try{ await updateFields("Quotations", q, {Status:"Sent"})
 }
 window.vQuotation=vQuotation;
 
-window._BUILD = "BUILD v45.1 — Wholesale module ab EA ko bhi (menu + API access)";
+window._BUILD = "BUILD v46 — WS: no auto-print, stock-minus warning, print modal, Purchase/Return/SO edit + filters, Stock PDF; busy watchdog + fetch timeout";
 (function(){
 try{
 var bv=document.getElementById("build-v"); if(bv) bv.textContent=window._BUILD;

@@ -152,33 +152,37 @@ saveDone("wsm");
 window._wsRows=[];
 function wsVoucherSection(T){
 const label=T==="PURCHASE"?"Purchase Voucher":T==="SALE"?"Sale Voucher":"Sale Return";
-const list=(T==="SRETURN"? wsVouchers(T).filter(v=>wsInRange(v,"_wsSRF")) : wsVouchers(T)).slice(0,80);
+const FK= T==="SRETURN"?"_wsSRF" : T==="PURCHASE"?"_wsPVF" : "";
+const list=(FK? wsVouchers(T).filter(v=>wsInRange(v,FK)) : wsVouchers(T)).slice(0,120);
 return `<div class="card"><div class="section-h"><h3>＋ ${label}</h3><div class="ln"></div><button class="btn" onclick="wsOpenVoucher('${T}')">＋ New ${label}</button></div>
 ${T==="SALE"?'<div class="muted">Price party ke price-list (P1/P2) se apne aap aayega — badla bhi ja sakta hai.</div>':T==="PURCHASE"?'<div class="muted">Purchase mein price nahi poochha jaata — sirf qty, warehouse aur batch. Opening stock ke liye bhi yahi use karo (party: koi bhi supplier, notes mein "Opening" likho) ya Stock tab se Opening entry.</div>':''}
 </div>
-${T==="SRETURN"? wsDateFilterBar("_wsSRF") : ""}
-<div class="section-h"><h3>${T==="SRETURN"?"Bills":"Recent"} (${list.length})</h3><div class="ln"></div></div>
+${FK? wsDateFilterBar(FK) : ""}
+<div class="section-h"><h3>${FK?"Bills":"Recent"} (${list.length})</h3><div class="ln"></div></div>
 ${list.length? `<div class="tbl-wrap"><table><tr><th>V.No</th><th>Date</th><th>Party</th><th>Items</th><th class="r">Total</th><th>Status</th><th></th></tr>
 ${list.map(v=>`<tr class="${v.status==='Cancelled'?'muted':''}"><td><b>${esc(v.vno)}</b></td><td>${fmtDate(v.vdate)}</td><td>${esc(v.party_name)}</td>
 <td class="muted" style="max-width:260px;font-size:.75rem">${(v.items||[]).map(i=>esc(i.item_name)+" ×"+i.qty).join(", ")}</td>
 <td class="r"><b>${T==="PURCHASE"?"—":money(v.grand_total)}</b></td><td>${esc(v.status)}</td>
 <td style="white-space:nowrap"><button class="btn small ghost" onclick="wsViewVoucher('${v.vno}')">View</button>
+${v.status==='Active'?`<button class="btn small dark" onclick="wsOpenVoucher('${T}', wsVouchers('${T}').find(x=>x.vno==='${v.vno}'), {edit:true})">✎ Edit</button>`:""}
 ${T!=="PURCHASE"?`<button class="btn small ghost" onclick="wsPrintVoucher('${v.vno}')">🖨</button>`:""}
 ${v.status==='Active'?`<button class="btn small danger" onclick="wsCancelV('${v.vno}')">✖</button>`:""}</td></tr>`).join("")}
 </table></div>`:`<div class="card empty">Abhi koi ${label} nahi.</div>`}`;
 }
-function wsOpenVoucher(T, hold){
+function wsOpenVoucher(T, hold, opts){
+opts=opts||{}; const editing=!!opts.edit; // v46: edit mode — hold param = prefill voucher
 const isP=(T==="PURCHASE"), isS=T==="SALE"||T==="SRETURN";
 const pt=isP?"SUPPLIER":"CUSTOMER";
-window._wsRows = hold? (hold.items||[]).map(i=>({item_code:i.item_code, warehouse_code:i.warehouse_code, batch:i.batch===""?"__none":i.batch, qty:num(i.qty), price:num(i.price), unit:i.unit||"Box"})) : [wsBlankRow()];
-window._wsVT=T; window._wsHold=hold? hold.vno:"";
+window._wsRows = hold? (hold.items||[]).map(i=>({item_code:i.item_code, warehouse_code:i.warehouse_code, batch:(isP? i.batch : (i.batch===""?"__none":i.batch)), qty:num(i.qty), price:num(i.price), unit:i.unit||"Box", _manual:true})) : [wsBlankRow()];
+window._wsVT=T; window._wsHold=(hold&&!editing)? hold.vno:""; window._wsEditVno= editing? hold.vno : "";
 const party=hold? hold.party_code : "";
-openModal((hold?"Hold → ":"")+(T==="PURCHASE"?"Purchase Voucher":T==="SALE"?"Sale Voucher":T==="HOLD"?"Sales Order":"Sale Return"), `
+const ttl=(T==="PURCHASE"?"Purchase Voucher":T==="SALE"?"Sale Voucher":T==="HOLD"?"Sales Order":"Sale Return");
+openModal(editing? "✎ Edit "+hold.vno+" — "+ttl : (hold?"Sales Order → ":"")+ttl, `
 <div class="form-grid">
 <div><label>${isP?"Supplier":"Dealer"} <span class="req">*</span> <span class="muted" style="text-transform:none">(type karo)</span></label>
 <div class="ws-ta"><input id="wsv-party-in" autocomplete="off" placeholder="${isP?'Supplier':'Dealer'} type karo…" value="${party?esc((wsPartyByCode(party)||{}).name||''):''}" oninput="wsPartySuggest(this)" onblur="setTimeout(()=>wsSugHide('wsv-party-sug'),200)" style="width:100%;box-sizing:border-box;padding:.5rem"><div class="ws-sug" id="wsv-party-sug"></div></div>
 <input type="hidden" id="wsv-party" value="${party||''}"></div>
-<div><label>Date</label><input type="date" id="wsv-date" value="${todayStr()}"></div>
+<div><label>Date</label><input type="date" id="wsv-date" value="${hold&&hold.vdate? String(hold.vdate).slice(0,10) : todayStr()}"></div>
 </div>
 <div id="wsv-crinfo" class="muted" style="margin:.3rem 0"></div>
 <div id="wsv-rows"></div>
@@ -191,9 +195,9 @@ ${isS||T==="HOLD"? `<div class="form-grid" style="margin-top:.6rem">
 <div><label>Notes</label><input id="wsv-notes" value="${esc(hold?hold.notes:'')}"></div>
 </div>
 <div class="rowline" style="margin-top:.5rem"><span>GRAND TOTAL</span><b id="wsv-gt">₹0</b></div>`
-: `<div class="form-grid" style="margin-top:.6rem"><div class="full"><label>Notes</label><input id="wsv-notes"></div></div>`}
-<div style="margin-top:.8rem"><button class="btn" onclick="wsSaveVoucher()">Save ${hold?"as Sale":""}</button>
-${T==="SALE"&&!hold? `<button class="btn ghost" onclick="window._wsVT='HOLD';wsSaveVoucher()">⏸ Save as Hold</button>`:""}</div>`);
+: `<div class="form-grid" style="margin-top:.6rem"><div class="full"><label>Notes</label><input id="wsv-notes" value="${esc(hold?hold.notes||'':'')}"></div></div>`}
+<div style="margin-top:.8rem"><button class="btn" onclick="wsSaveVoucher()">${editing? "💾 Save changes" : hold? "Save as Sale" : "Save"}</button>
+<button class="btn ghost" onclick="window._wsEditVno='';window._wsHold='';closeModal()">✖ Cancel</button></div>`);
 wsRenderRows(); wsPartyPick();
 }
 function wsPartyTyped(el){
@@ -297,7 +301,10 @@ const party=$("wsv-party").value;
 if(T!=="OPENING" && !party){ saveDone("wsv"); return toast((T==="PURCHASE"?"Supplier":"Dealer")+" chuno."); }
 const items=window._wsRows.filter(r=>r.item_code && num(r.qty)>0).map(r=>({item_code:r.item_code, warehouse_code:r.warehouse_code, batch:r.batch==="__new"? (prompt("Naya batch number likho:")||"") : r.batch==="__none"? "" : r.batch, qty:num(r.qty), unit:r.unit||"Box", price:(T==="PURCHASE"||T==="OPENING")?0:num(r.price)}));
 if(!items.length){ saveDone("wsv"); return toast("Kam se kam ek item + qty bharo."); }
-if(T==="SALE"||T==="HOLD"){ const miss=window._wsRows.filter(r=>r.item_code && num(r.qty)>0).find(x=>x.batch===""); if(miss){ saveDone("wsv"); return toast("Har item ka batch chuno — bina batch wale maal ke liye \"(no batch)\" option chuno."); } }
+if(T==="SALE"||T==="HOLD"){ const miss=window._wsRows.filter(r=>r.item_code && num(r.qty)>0).find(x=>x.batch===""); if(miss){ saveDone("wsv"); return toast("Har item ka batch chuno — bina batch wale maal ke liye \"(no batch)\" option chuno."); }
+// v46: stock kam ho to WARNING (entry rukti nahi)
+const shortRows=window._wsRows.filter(r=>r.item_code && num(r.qty)>0).map(r=>{ const rb=r.batch==="__none"?"":r.batch; const av=wsStockOf(r.item_code,r.warehouse_code,rb); let base=av; if(window._wsEditVno){ const ov=((WS&&WS.vouchers)||[]).find(x=>x.vno===window._wsEditVno); const oi=ov&&(ov.items||[]).find(i=>i.item_code===r.item_code&&i.warehouse_code===r.warehouse_code&&(i.batch||"")===rb); if(oi) base=av+num(oi.qty); } return num(r.qty)>base? {name:(wsItemByCode(r.item_code)||{}).name||r.item_code, av:base, q:num(r.qty)} : null; }).filter(Boolean);
+if(shortRows.length){ const msg="⚠ STOCK KAM HAI — ye item minus mein chale jayenge:\n\n"+shortRows.map(x=>x.name+": available "+x.av+", bill "+x.q).join("\n")+"\n\nPhir bhi entry karni hai?"; if(!confirm(msg)){ saveDone("wsv"); return; } } }
 const O=window._wsOthers||{};
 const v={vtype:T, vdate:$("wsv-date").value, party_code:party,
 cartage:num($("wsv-cart")&&$("wsv-cart").value), unloading:num($("wsv-unl")&&$("wsv-unl").value),
@@ -307,10 +314,10 @@ try{
 const res = window._wsHold? await gsRun("wsHoldConvert",[window._wsHold, v, items]) : window._wsEditVno? await gsRun("wsEdit",[window._wsEditVno, v, items]) : await gsRun("wsVoucher",[v, items]);
 busy(false); closeModal(); toast(res.vno+" saved ✓");
 window._wsHold=""; window._wsEditVno=""; window._wsOthers=null; if(window._wsS) window._wsS.mode="sheet", window._wsS.idx=0;
-if(window._wsVT==="HOLD"&&window._wsTab==="sale") window._wsTab="hold";
+if(window._wsVT==="HOLD"&&window._wsTab==="sale") window._wsTab="sorder";
 try{ alog("ws_voucher", res.vno); }catch(_e){}
 window.WS=null; await wsLoad(); // pehle fresh data, phir print offer (warna naya voucher print mein nahi milta)
-if(T==="SALE"||T==="SRETURN"){ if(confirm("Print karna hai "+res.vno+"?")) wsPrintVoucher(res.vno); }
+// v46: auto-print popup band — print button se hi print
 }catch(e){ busy(false); toast(e.message); }
 saveDone("wsv");
 }
@@ -464,6 +471,7 @@ ${Object.keys(byP).length? Object.keys(byP).map(pn=>`<div class="section-h"><h3>
 <div class="tbl-wrap"><table><tr><th>V.No</th><th>Date</th><th>Items</th><th class="r">Value</th><th></th></tr>
 ${byP[pn].map(v=>`<tr><td><b>${esc(v.vno)}</b></td><td>${fmtDate(v.vdate)}</td><td class="muted" style="font-size:.75rem">${(v.items||[]).map(i=>esc(i.item_name)+" ×"+i.qty).join(", ")}</td><td class="r">${money(v.grand_total)}</td>
 <td style="white-space:nowrap"><button class="btn small" onclick="wsHoldToSale('${v.vno}')">→ Sale Challan</button>
+<button class="btn small dark" onclick="wsOpenVoucher('HOLD', wsVouchers('HOLD').find(x=>x.vno==='${v.vno}'), {edit:true})">✎ Edit</button>
 <button class="btn small ghost" onclick="wsViewVoucher('${v.vno}')">View</button>
 <button class="btn small danger ghost" onclick="wsCancelV('${v.vno}')">✖</button></td></tr>`).join("")}</table></div>`).join("")
 : `<div class="card empty">Koi open hold nahi.</div>`}`;
@@ -564,11 +572,46 @@ ${hits.map(i=>{const c=wsStockOf(i.code); return `<tr class="click" onclick="win
 }
 return `<div class="card"><div class="section-h"><h3>🗃 Stock Ledger — category chuno</h3><div class="ln"></div>
 <input id="ws-gstq" autocomplete="off" placeholder="🔍 Item search (kuch akshar)…" value="" oninput="window._wsStGlobalQ=this.value;window._refocusId=this.id;render()" style="max-width:240px">
+<button class="btn small" onclick="wsStockPDF()">⬇ Download PDF</button>
 <button class="btn small ghost" onclick="wsOpenOpening()">＋ Opening stock</button></div>
 <div class="tbl-wrap"><table><tr><th>Itemlist (Category)</th><th>Desc</th><th class="r">Opening Balance</th><th class="r">Closing Balance</th></tr>
 ${catRows||'<tr><td colspan="4" class="muted">Pehle Masters mein categories banao.</td></tr>'}
 <tr style="border-top:2px solid var(--brand)"><td><b>TOTAL</b></td><td></td><td class="r"><b>${gO}</b></td><td class="r"><b>${gC}</b></td></tr>
 </table></div></div>`;
+}
+/* v46: STOCK-IN-HAND PDF — Busy report format (category header, items, subtotal, grand total) */
+function wsStockPDF(){
+const f3=n=>{ n=num(n); return (Math.round(n*1000)/1000).toLocaleString('en-IN',{minimumFractionDigits:3,maximumFractionDigits:3}); };
+let grand=0, rows="";
+wsCats().forEach(c=>{
+const its=wsItems().filter(i=>i.category_code===c.code).sort((a,b)=>a.name.localeCompare(b.name));
+if(!its.length) return;
+let sub=0;
+rows+=`<tr class="cat"><td></td><td>${esc(c.name)}</td><td></td></tr>`;
+its.forEach(i=>{ const q=wsStockOf(i.code); sub+=q; rows+=`<tr><td>${esc(i.code)}</td><td>${esc(i.name)}</td><td class="r">${f3(q)}</td></tr>`; });
+grand+=sub;
+rows+=`<tr class="sub"><td></td><td></td><td class="r">${f3(sub)}</td></tr>`;
+});
+const d=new Date(); const pad=n=>String(n).padStart(2,"0"); const asOn=pad(d.getDate())+"/"+pad(d.getMonth()+1)+"/"+d.getFullYear();
+printHTML(`<!DOCTYPE html><html><head><title>Stock in Hand ${asOn}</title><style>
+@page{size:A4 portrait;margin:12mm 10mm 14mm 10mm; @bottom-right{content:"Page " counter(page);font-size:9px;font-family:Arial}}
+body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#111;margin:0}
+h1{text-align:center;font-size:14px;margin:0 0 2px} h2{text-align:center;font-size:12px;margin:6px 0 2px;letter-spacing:1px}
+.meta{display:flex;justify-content:space-between;font-size:10px;margin:4px 0 6px}
+table{width:100%;border-collapse:collapse} th,td{border:1px solid #333;padding:3px 5px;font-size:9.5px}
+th{background:#eee;-webkit-print-color-adjust:exact;print-color-adjust:exact;text-align:center}
+td.r{text-align:right;white-space:nowrap}
+tr.cat td{font-weight:bold;font-size:11px;text-decoration:underline;padding-top:5px}
+tr.sub td{font-weight:bold}
+tr.grand td{font-weight:bold;font-size:11px;background:#f3f3f3;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+thead{display:table-header-group} tr{page-break-inside:avoid}
+</style></head><body>
+<h1>BANSAL SALES</h1><h2>STOCK-IN-HAND</h2>
+<div class="meta"><span>Stock in Hand as on &nbsp; <b>${asOn}</b></span><span>Categories: ${wsCats().length} · Items: ${wsItems().length}</span></div>
+<table><thead><tr><th style="width:16%">Itemcode</th><th>Item Name</th><th style="width:18%">Stock In Hand</th></tr></thead>
+<tbody>${rows}
+<tr class="grand"><td></td><td>GRAND TOTAL</td><td class="r">${f3(grand)}</td></tr></tbody></table>
+</body></html>`, true);
 }
 function wsItemLedgerPage(code){
 const it=wsItemByCode(code)||{};
@@ -777,8 +820,10 @@ const el=$("wsl-out"); if(el){ el.innerHTML=`<div class="card"><div class="secti
 
 /* ============================ PRINT (A5 landscape, Original | Duplicate) ============================ */
 function wsPrintVoucher(vno){
-const wp=confirm("WITH PRICE print nikalna hai?\n\nOK = with price · Cancel = bina price (default)");
-wsPrintVoucherData(vno, wp);
+openModal("🖨 Print — "+vno, `
+<label style="display:flex;align-items:center;gap:.5rem;padding:.5rem;border:1px solid var(--line);border-radius:8px;margin-bottom:.4rem;cursor:pointer;text-transform:none;font-weight:600"><input type="radio" name="wsprt" value="0" checked style="width:auto"> Without price (loader / driver ke liye)</label>
+<label style="display:flex;align-items:center;gap:.5rem;padding:.5rem;border:1px solid var(--line);border-radius:8px;cursor:pointer;text-transform:none;font-weight:600"><input type="radio" name="wsprt" value="1" style="width:auto"> With price (dealer ke liye)</label>
+<div style="margin-top:.8rem"><button class="btn" onclick="(function(){ var wp=false; try{ wp=document.querySelector('input[name=wsprt]:checked').value==='1'; }catch(e){} closeModal(); wsPrintVoucherData('${vno}', wp); })()">🖨 Print</button></div>`);
 }
 function wsPrintVoucherData(vno, withPrice){
 const v=((WS&&WS.vouchers)||[]).find(x=>x.vno===vno);
