@@ -47,8 +47,8 @@ return v==null? (pl==="P2"? (it.sp1!=null?num(it.sp1):0) : 0) : num(v);
 function vWSAcct(){
 if(!WS){ wsLoad(); return `<div class="card empty">Wholesale data load ho raha hai…</div>`; }
 const t=window._wsTab;
-const MENU=[["dash","▦ Dashboard"],["masters","⚙️ Masters"],["sale","🧾 Sale"],["purchase","📥 Purchase"],["sreturn","↩ Sale Return"],["sorder","📝 Sales Orders ("+wsVouchers("HOLD").filter(v=>v.status==="Open").length+")"],["pending","🚚 Dispatch Status ("+wsVouchers("SALE").filter(v=>v.status==="Active"&&v.dispatch_status!=="Dispatched").length+")"],["payments","💰 Payments"],["stock","🗃 Stock"],["expense","💸 Expense"],["ledger","📒 Ledgers"]];
-const body = t==="dash"?wsDash() : t==="masters"?wsMasters() : t==="purchase"?wsVoucherSection("PURCHASE") : t==="sale"?wsSalePage() : t==="sreturn"?wsVoucherSection("SRETURN") : (t==="hold"||t==="sorder")?wsHolds() : t==="pending"?wsPending() : t==="stock"?wsStockView() : t==="payments"?wsPayments() : t==="expense"?wsExpense() : wsLedger();
+const MENU=[["dash","▦ Dashboard"],["masters","⚙️ Masters"],["sale","🧾 Sale"],["purchase","📥 Purchase"],["sreturn","↩ Sale Return"],["sorder","📝 Sales Orders ("+wsVouchers("HOLD").filter(v=>v.status==="Open").length+")"],["pending","🚚 Dispatch Status ("+wsVouchers("SALE").filter(v=>v.status==="Active"&&v.dispatch_status!=="Dispatched").length+")"],["payments","💰 Payments"],["stock","🗃 Stock"],["expense","💸 Expense"],["ledger","📒 Ledgers"],["cheques","🏦 Cheque Register"]];
+const body = t==="dash"?wsDash() : t==="masters"?wsMasters() : t==="purchase"?wsVoucherSection("PURCHASE") : t==="sale"?wsSalePage() : t==="sreturn"?wsVoucherSection("SRETURN") : (t==="hold"||t==="sorder")?wsHolds() : t==="pending"?wsPending() : t==="stock"?wsStockView() : t==="payments"?wsPayments() : t==="expense"?wsExpense() : t==="cheques"?(window.vCheques?vCheques():"") : wsLedger();
 return `<style>
 .ws-sug{position:absolute;z-index:60;left:0;right:0;top:100%;background:#fff;border:1px solid #cdd;border-radius:8px;max-height:260px;overflow:auto;box-shadow:0 6px 18px #0003;display:none}
 .ws-sug-item{padding:.5rem .6rem;cursor:pointer;border-bottom:1px solid #eef;font-size:.9rem}

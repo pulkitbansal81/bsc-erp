@@ -979,10 +979,10 @@ async function route(fn: string, args: unknown[], auth: Auth): Promise<unknown> 
   }
   if (fn === "readSched" || fn === "appendSched" || fn === "updateSched") await requireOwner(ctx);
   // ---- Cheque Register (Admin / CRM / Accountant) ----
-  if (fn === "chqRegister") { await requireRole(ctx, /crm|account/i, "Cheque Register"); return await wsRpc("cheque_register", { p_from: args?.[0] || null, p_to: args?.[1] || null }); }
+  if (fn === "chqRegister") { await requireRole(ctx, /crm|account|^ea$|executive/i, "Cheque Register"); return await wsRpc("cheque_register", { p_from: args?.[0] || null, p_to: args?.[1] || null }); }
   if (fn === "chqSet") {
     const action = S(args?.[2]);
-    const ur = (action === "clear" || action === "bounce") ? await requireRole(ctx, /account/i, "Cheque clear/bounce (Accountant)") : await requireRole(ctx, /crm/i, "Cheque send/re-present (CRM)");
+    const ur = (action === "clear" || action === "bounce") ? await requireRole(ctx, /account/i, "Cheque clear/bounce (Accountant)") : await requireRole(ctx, /wholesale.*crm|crm.*wholesale/i, "Cheque send/re-present (Wholesale CRM)");
     const r = await wsRpc("cheque_set", { p_origin: S(args?.[0]), p_ref: S(args?.[1]), p_action: action, p_by: ur.name, p_note: S(args?.[3]) });
     try { await accessLog(ctx.u, ur.name, ur.role, "cheque_" + action, S(args?.[0]) + " " + S(args?.[1]), 1, ctx.imp); } catch (_) { /* */ }
     return r;

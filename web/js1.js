@@ -364,13 +364,14 @@ if(String(role).toLowerCase().indexOf("dispatch manager")>-1 && !M.some(x=>x[0]=
 // v22.1: "Accountant" role (naam mein "accountant") ko Check Bank Entries auto milta hai
 if(String(role).toLowerCase().indexOf("accountant")>-1 && !M.some(x=>x[0]==="bankcheck")) M.push(["bankcheck", MODULES.bankcheck[0], MODULES.bankcheck[1]]);
 if(String(role).toLowerCase().indexOf("accountant")>-1 && !M.some(x=>x[0]==="cheques")) M.push(["cheques","Cheque Register","🏦"]); // v47
+if(/wholesale/i.test(String(role)) && /crm/i.test(String(role)) && !M.some(x=>x[0]==="cheques")) M.push(["cheques","Cheque Register","🏦"]); // v47.1: Wholesale CRM (retail CRM ko nahi)
 return M;
 }
 if(role==="Admin") M.push(["home","BSC Dashboard","🏠"],["myscheduler","My Scheduler","⭐"]);
 M.push(["dashboard", role==="Admin"?"Retail Dashboard":"Dashboard","▦"]);
 if(role==="Data Entry"){ M.push(["attendance","Attendance","🕘"],["taskmgmt","Assigned Tasks","📌"],["newlead","Add New Lead","＋"],["addcustomer","Add Customer","👤"],["estimates","Estimates","🧾"],["autos","Auto Persons","🛺"],["stock","Check Stock","🗃"]); return M; }
 if(role==="CRM"){
-M.push(["cheques","Cheque Register","🏦"],["feedback","Feedback Calls","⭐"],["paycalls","Payment Calls Report","📈"],["attendance","Attendance","🕘"],["taskmgmt","Assigned Tasks","📌"],["dispatch","Estimates & Dispatch","🚚"],["payfollow","Payment Followups","💰"],["outstanding","Outstanding","₹"],["customers","Customer Ledgers","👥"],["autos","Auto Persons","🛺"],["stock","Check Stock","🗃"]);
+M.push(["feedback","Feedback Calls","⭐"],["paycalls","Payment Calls Report","📈"],["attendance","Attendance","🕘"],["taskmgmt","Assigned Tasks","📌"],["dispatch","Estimates & Dispatch","🚚"],["payfollow","Payment Followups","💰"],["outstanding","Outstanding","₹"],["customers","Customer Ledgers","👥"],["autos","Auto Persons","🛺"],["stock","Check Stock","🗃"]);
 return M;
 }
 if(role==="Admin"){

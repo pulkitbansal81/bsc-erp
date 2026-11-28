@@ -2,7 +2,7 @@
  * js5 — CHEQUE REGISTER (retail + wholesale) · Wholesale payment approval (Admin checker)
  * Flow: Pending → Sent to bank (CRM/Admin) → Cleared | Bounced (Accountant/Admin) → Re-present (CRM/Admin) → Sent…
  * ========================================================================== */
-function chqIsCRM(){ return isAdmin() || /crm/i.test(String(USER.Role||"")); }
+function chqIsCRM(){ const r=String(USER.Role||""); return isAdmin() || (/wholesale/i.test(r) && /crm/i.test(r)); } // Wholesale CRM only
 function chqIsAcct(){ return isAdmin() || /account/i.test(String(USER.Role||"")); }
 window._chqRows=null; window._chqTab=window._chqTab||"today";
 
